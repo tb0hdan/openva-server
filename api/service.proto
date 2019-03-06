@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package api;
+
+service OpenVAService {
+    rpc TTSStringToMP3 (TTSRequest) returns (TTSReply) {}
+}
+
+message TTSRequest {
+    string text = 1;
+}
+
+message TTSReply {
+    bytes MP3Response = 1;
+}
