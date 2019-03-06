@@ -22,7 +22,7 @@ func (s *server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 	if err != nil {
 		return nil, err
 	}
-	reply.MP3Response = result
+	reply = &api.TTSReply{MP3Response: result}
 	return
 }
 
