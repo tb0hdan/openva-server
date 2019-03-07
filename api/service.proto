@@ -8,7 +8,7 @@ import "google/protobuf/duration.proto";
 
 service OpenVAService {
     rpc TTSStringToMP3 (TTSRequest) returns (TTSReply) {}
-    rpc STT (STTRequest) returns (stream StreamingRecognizeResponse) {}
+    rpc STT (stream STTRequest) returns (stream StreamingRecognizeResponse) {}
 }
 
 message TTSRequest {

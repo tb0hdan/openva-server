@@ -53,15 +53,8 @@ func (s *server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 	return
 }
 
-func (s *server) STT(request *api.STTRequest, srv api.OpenVAService_STTServer) (err error) {
+func (s *server) STT(srv api.OpenVAService_STTServer) (err error) {
 	stream := getStream()
-	if err = stream.Send(&speechpb.StreamingRecognizeRequest{
-		StreamingRequest: &speechpb.StreamingRecognizeRequest_AudioContent{
-			AudioContent: request.STTBuffer,
-		},
-	}); err != nil {
-		log.Printf("Could not send audio: %v", err)
-	}
 
 	for {
 
