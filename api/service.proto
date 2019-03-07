@@ -2,8 +2,13 @@ syntax = "proto3";
 
 package api;
 
+import "google/protobuf/duration.proto";
+
+
+
 service OpenVAService {
     rpc TTSStringToMP3 (TTSRequest) returns (TTSReply) {}
+    rpc STT (STTRequest) returns (stream StreamingRecognizeResponse) {}
 }
 
 message TTSRequest {
@@ -12,4 +17,58 @@ message TTSRequest {
 
 message TTSReply {
     bytes MP3Response = 1;
+}
+
+message STTRequest {
+    bytes STTBuffer = 1;
+}
+
+message StreamingRecognizeResponse {
+    // Indicates the type of speech event.
+    enum SpeechEventType {
+        // No speech event specified.
+        SPEECH_EVENT_UNSPECIFIED = 0;
+
+        // This event indicates that the server has detected the end of the user's
+        // speech utterance and expects no additional speech. Therefore, the server
+        // will not process additional audio (although it may subsequently return
+        // additional results). The client should stop sending additional audio
+        // data, half-close the gRPC connection, and wait for any additional results
+        // until the server closes the gRPC connection. This event is only sent if
+        // `single_utterance` was set to `true`, and is not used otherwise.
+        END_OF_SINGLE_UTTERANCE = 1;
+    }
+
+    // Output only. If set, returns a [google.rpc.Status][google.rpc.Status]
+    // message that specifies the error for the operation.
+    // google.rpc.Status error = 1;
+
+    // Output only. This repeated list contains zero or more results that
+    // correspond to consecutive portions of the audio currently being processed.
+    // It contains zero or one `is_final=true` result (the newly settled portion),
+    // followed by zero or more `is_final=false` results (the interim results).
+    repeated StreamingRecognitionResult results = 2;
+
+    // Output only. Indicates the type of speech event.
+    SpeechEventType speech_event_type = 4;
+}
+
+message StreamingRecognitionResult {
+    repeated SpeechRecognitionAlternative alternatives = 1;
+    bool is_final = 2;
+    float stability = 3;
+    //int32 channel_tag = 5;
+}
+
+message SpeechRecognitionAlternative {
+    string transcript = 1;
+    float confidence = 2;
+    repeated WordInfo words = 3;
+}
+
+
+message WordInfo {
+    google.protobuf.Duration start_time = 1;
+    google.protobuf.Duration end_time = 2;
+    string word = 3;
 }
