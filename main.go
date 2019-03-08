@@ -53,10 +53,67 @@ func (s *server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 	return
 }
 
+func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) (response api.StreamingRecognizeResponse){
+	results := make([]*api.StreamingRecognitionResult, 0)
+	for _, res := range resp.Results {
+		alternatives := make([]*api.SpeechRecognitionAlternative, 0)
+		for _, alt := range res.Alternatives {
+			words := make([]*api.WordInfo, 0)
+			for _, word := range alt.Words {
+				wrd := &api.WordInfo{
+					StartTime: word.StartTime,
+					EndTime:   word.EndTime,
+					Word:      word.Word,
+				}
+				words = append(words, wrd)
+			}
+
+			alternative := &api.SpeechRecognitionAlternative{
+				Transcript: alt.Transcript,
+				Confidence: alt.Confidence,
+				Words:      words,
+			}
+			alternatives = append(alternatives, alternative)
+		}
+
+		result := &api.StreamingRecognitionResult{
+			Alternatives: alternatives,
+			IsFinal:      res.IsFinal,
+			Stability:    res.Stability,
+		}
+		results = append(results, result)
+	}
+
+	response = api.StreamingRecognizeResponse{
+		Results:         results,
+		SpeechEventType: api.StreamingRecognizeResponse_SpeechEventType(resp.SpeechEventType),
+	}
+	return
+}
+
 func (s *server) STT(srv api.OpenVAService_STTServer) (err error) {
 	stream := getStream()
 
-	for {
+	go func() {
+		for {
+			req, err := srv.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Fatalf("Cannot receive audio: %v", err)
+			}
+			if err = stream.Send(&speechpb.StreamingRecognizeRequest{
+				StreamingRequest: &speechpb.StreamingRecognizeRequest_AudioContent{
+					AudioContent: req.STTBuffer,
+				},
+			}); err != nil {
+				log.Printf("Could not send audio: %v", err)
+			}
+	}
+		}()
+
+		for {
 
 		resp, err := stream.Recv()
 		if err == io.EOF {
@@ -71,40 +128,7 @@ func (s *server) STT(srv api.OpenVAService_STTServer) (err error) {
 			break
 		}
 
-		results := make([]*api.StreamingRecognitionResult, 0)
-		for _, res := range resp.Results {
-			alternatives := make([]*api.SpeechRecognitionAlternative, 0)
-			for _, alt := range res.Alternatives {
-				words := make([]*api.WordInfo, 0)
-				for _, word := range alt.Words {
-					wrd := &api.WordInfo{
-						StartTime: word.StartTime,
-						EndTime:   word.EndTime,
-						Word:      word.Word,
-					}
-					words = append(words, wrd)
-				}
-
-				alternative := &api.SpeechRecognitionAlternative{
-					Transcript: alt.Transcript,
-					Confidence: alt.Confidence,
-					Words:      words,
-				}
-				alternatives = append(alternatives, alternative)
-			}
-
-			result := &api.StreamingRecognitionResult{
-				Alternatives: alternatives,
-				IsFinal:      res.IsFinal,
-				Stability:    res.Stability,
-			}
-			results = append(results, result)
-		}
-
-		response := api.StreamingRecognizeResponse{
-			Results:         results,
-			SpeechEventType: api.StreamingRecognizeResponse_SpeechEventType(resp.SpeechEventType),
-		}
+		response := GoogleSTTToOpenVASTT(resp)
 
 		err = srv.Send(&response)
 		if err != nil {
@@ -119,7 +143,7 @@ func (s *server) STT(srv api.OpenVAService_STTServer) (err error) {
 func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 	// connect to Google for a set duration to avoid running forever
 	// and charge the user a lot of money.
-	runDuration := 70 * time.Second
+	runDuration := 240 * time.Second
 	bgctx := context.Background()
 	ctx, _ := context.WithDeadline(bgctx, time.Now().Add(runDuration))
 	conn, err := transport.DialGRPC(ctx,
