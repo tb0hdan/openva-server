@@ -53,7 +53,7 @@ func (s *server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 	return
 }
 
-func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) (response api.StreamingRecognizeResponse){
+func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) (response api.StreamingRecognizeResponse) {
 	results := make([]*api.StreamingRecognitionResult, 0)
 	for _, res := range resp.Results {
 		alternatives := make([]*api.SpeechRecognitionAlternative, 0)
@@ -91,51 +91,64 @@ func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) (response a
 	return
 }
 
-func (s *server) STT(srv api.OpenVAService_STTServer) (err error) {
-	stream := getStream()
+func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
+	fmt.Println("Send config...")
+	ctx := stream.Context()
+
+
+	speechStream := getStream()
 
 	go func() {
+
 		for {
-			req, err := srv.Recv()
+
+			resp, err := speechStream.Recv()
 			if err == io.EOF {
 				break
 			}
 			if err != nil {
-				log.Fatalf("Cannot receive audio: %v", err)
+				log.Println("Cannot speech stream results: %v", err)
+				break
 			}
-			if err = stream.Send(&speechpb.StreamingRecognizeRequest{
-				StreamingRequest: &speechpb.StreamingRecognizeRequest_AudioContent{
-					AudioContent: req.STTBuffer,
-				},
-			}); err != nil {
-				log.Printf("Could not send audio: %v", err)
-			}
-	}
-		}()
 
-		for {
+			replies := GoogleSTTToOpenVASTT(resp)
+			stream.Send(&replies)
+		}
 
-		resp, err := stream.Recv()
+	}()
+
+	for {
+
+		// exit if context is done
+		// or continue
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		req, err := stream.Recv()
 		if err == io.EOF {
+			log.Println("completed")
 			break
 		}
 		if err != nil {
-			log.Println("Cannot stream results: %v", err)
-			break
-		}
-		if err := resp.Error; err != nil {
-			log.Println("Could not recognize: %v", err)
+			log.Println(err)
 			break
 		}
 
-		response := GoogleSTTToOpenVASTT(resp)
-
-		err = srv.Send(&response)
-		if err != nil {
-			log.Printf("%+v", err)
+		if err = speechStream.Send(&speechpb.StreamingRecognizeRequest{
+			StreamingRequest: &speechpb.StreamingRecognizeRequest_AudioContent{
+				AudioContent: req.STTBuffer,
+			},
+		}); err != nil {
+			log.Printf("Could not send audio: %v", err)
 		}
 
 	}
+
+
+
 
 	return
 }

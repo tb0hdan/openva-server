@@ -15,5 +15,6 @@
 .idea/
 
 # local
+cache
 music
 openva-server
