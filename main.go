@@ -21,11 +21,14 @@ import (
 
 	"cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
+
+	"github.com/dhowden/tag"
 )
 
 const (
 	port     = ":50001"
 	HTTPPort = ":50002"
+	MusicDir = "./music"
 )
 
 type server struct {
@@ -153,6 +156,41 @@ func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 	return
 }
 
+func (s *server) Library(ctx context.Context, filterRequest *api.LibraryFilterRequest) (libraryItems *api.LibraryItems, err error) {
+	items := make([]*api.LibraryItem, 0)
+	err = filepath.Walk(MusicDir,  func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if strings.HasSuffix(path, ".mp3") {
+			file, err := os.Open(path)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			m, err := tag.ReadFrom(file)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			item := &api.LibraryItem{
+				URL: "http://localhost" + HTTPPort + path,
+				Artist: m.Artist(),
+				Album: m.Album(),
+				Track: m.Title(),
+
+			}
+			items = append(items, item)
+		}
+		return nil
+	})
+
+	libraryItems = &api.LibraryItems{
+		Items: items,
+	}
+	return
+}
+
 func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 	// connect to Google for a set duration to avoid running forever
 	// and charge the user a lot of money.
@@ -197,7 +235,7 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 func main() {
 	handler := http.NewServeMux()
 
-	dir, err := filepath.EvalSymlinks("./music")
+	dir, err := filepath.EvalSymlinks(MusicDir)
 
 	if err != nil {
 		log.Fatal("Please create ./music symlink")

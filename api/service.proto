@@ -9,6 +9,24 @@ import "google/protobuf/duration.proto";
 service OpenVAService {
     rpc TTSStringToMP3 (TTSRequest) returns (TTSReply) {}
     rpc STT (stream STTRequest) returns (stream StreamingRecognizeResponse) {}
+    rpc Library (LibraryFilterRequest) returns (LibraryItems) {}
+}
+
+message LibraryFilterRequest {
+    string criteria = 1;
+}
+
+message LibraryItem {
+    string URL = 1;
+    string Artist = 2;
+    string Album = 3;
+    string Track = 4;
+    int32 Length = 5;
+}
+
+
+message LibraryItems {
+    repeated LibraryItem items = 1;
 }
 
 message TTSRequest {
