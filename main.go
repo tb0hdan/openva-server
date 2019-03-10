@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/dhowden/tag"
 	"github.com/tb0hdan/openva-server/api"
 	"github.com/tb0hdan/openva-server/tts"
 	"google.golang.org/api/option"
@@ -13,6 +14,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,8 +23,6 @@ import (
 
 	"cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
-
-	"github.com/dhowden/tag"
 )
 
 const (
@@ -158,7 +158,11 @@ func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 
 func (s *server) Library(ctx context.Context, filterRequest *api.LibraryFilterRequest) (libraryItems *api.LibraryItems, err error) {
 	items := make([]*api.LibraryItem, 0)
-	err = filepath.Walk(MusicDir,  func(path string, info os.FileInfo, err error) error {
+	dir, err := filepath.EvalSymlinks(MusicDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = filepath.Walk(dir,  func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -168,16 +172,36 @@ func (s *server) Library(ctx context.Context, filterRequest *api.LibraryFilterRe
 				log.Fatal(err)
 			}
 
+			artist := ""
+			album := ""
+			track := ""
+
 			m, err := tag.ReadFrom(file)
 			if err != nil {
-				log.Fatal(err)
+				log.Println(err)
+
+			} else {
+				artist = m.Artist()
+				album = m.Album()
+				track = m.Title()
+			}
+
+			fmt.Println(artist, album, track)
+
+			escapedPath := ""
+			for _, r := range strings.Split(strings.TrimPrefix(path, dir), "/") {
+				escapedPath += "/" + url.PathEscape(r)
+			}
+
+			if strings.HasPrefix(escapedPath, "//") {
+				escapedPath = strings.TrimPrefix(escapedPath, "/")
 			}
 
 			item := &api.LibraryItem{
-				URL: "http://localhost" + HTTPPort + path,
-				Artist: m.Artist(),
-				Album: m.Album(),
-				Track: m.Title(),
+				URL: "http://localhost" + HTTPPort + "/music" + escapedPath,
+				Artist: "",
+				Album: "",
+				Track: "",
 
 			}
 			items = append(items, item)
