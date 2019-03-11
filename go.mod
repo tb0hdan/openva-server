@@ -1,5 +1,7 @@
 module github.com/tb0hdan/openva-server
 
+go 1.12
+
 require (
 	cloud.google.com/go v0.36.0
 	github.com/dhowden/tag v0.0.0-20181104225729-a9f04c2798ca

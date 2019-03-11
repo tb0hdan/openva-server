@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
@@ -98,7 +99,6 @@ func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 	fmt.Println("Send config...")
 	ctx := stream.Context()
 
-
 	speechStream := getStream()
 
 	go func() {
@@ -150,9 +150,6 @@ func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 
 	}
 
-
-
-
 	return
 }
 
@@ -162,50 +159,54 @@ func (s *server) Library(ctx context.Context, filterRequest *api.LibraryFilterRe
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = filepath.Walk(dir,  func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if strings.HasSuffix(path, ".mp3") {
-			file, err := os.Open(path)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			artist := ""
-			album := ""
-			track := ""
-
-			m, err := tag.ReadFrom(file)
-			if err != nil {
-				log.Println(err)
-
-			} else {
-				artist = m.Artist()
-				album = m.Album()
-				track = m.Title()
-			}
-
-			fmt.Println(artist, album, track)
-
-			escapedPath := ""
-			for _, r := range strings.Split(strings.TrimPrefix(path, dir), "/") {
-				escapedPath += "/" + url.PathEscape(r)
-			}
-
-			if strings.HasPrefix(escapedPath, "//") {
-				escapedPath = strings.TrimPrefix(escapedPath, "/")
-			}
-
-			item := &api.LibraryItem{
-				URL: "http://localhost" + HTTPPort + "/music" + escapedPath,
-				Artist: "",
-				Album: "",
-				Track: "",
-
-			}
-			items = append(items, item)
+		if !strings.HasSuffix(path, ".mp3") {
+			return nil
 		}
+
+		file, err := os.Open(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		artist := ""
+		album := ""
+		track := ""
+
+		m, err := tag.ReadFrom(file)
+		if err != nil {
+			log.Println(path, err)
+
+		} else {
+			artist = strings.Map(fixUTF, m.Artist())
+			album = strings.Map(fixUTF, m.Album())
+			track = strings.Map(fixUTF, m.Title())
+		}
+
+		if !libraryFilterPassed(filterRequest.Criteria, artist, album, track) {
+			return nil
+		}
+
+		escapedPath := ""
+		for _, r := range strings.Split(strings.TrimPrefix(path, dir), "/") {
+			escapedPath += "/" + url.PathEscape(r)
+		}
+
+		if strings.HasPrefix(escapedPath, "//") {
+			escapedPath = strings.TrimPrefix(escapedPath, "/")
+		}
+
+		item := &api.LibraryItem{
+			URL:    "http://localhost" + HTTPPort + "/music" + escapedPath,
+			Artist: artist,
+			Album:  album,
+			Track:  track,
+		}
+		items = append(items, item)
+
 		return nil
 	})
 
@@ -254,6 +255,33 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 		log.Fatal(err)
 	}
 	return
+}
+
+func libraryFilterPassed(criteria string, args... string) (bool) {
+	if len(criteria) == 0 {
+		return true
+	}
+
+	if len(args) == 0 {
+		return true
+	}
+	criteria = strings.ToLower(criteria)
+
+	for _, arg := range args {
+		arg = strings.ToLower(arg)
+		if len(arg) > 0 && strings.Contains(arg, criteria) {
+			return true
+		}
+	}
+	return false
+}
+
+// https://stackoverflow.com/questions/20401873/remove-invalid-utf-8-characters-from-a-string-go-lang
+func fixUTF(r rune) rune {
+	if r == utf8.RuneError {
+		return -1
+	}
+	return r
 }
 
 func main() {
