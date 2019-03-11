@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -100,6 +101,7 @@ func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 	ctx := stream.Context()
 
 	speechStream := getStream()
+	defer speechStream.CloseSend()
 
 	go func() {
 
@@ -186,7 +188,7 @@ func (s *server) Library(ctx context.Context, filterRequest *api.LibraryFilterRe
 			track = strings.Map(fixUTF, m.Title())
 		}
 
-		if !libraryFilterPassed(filterRequest.Criteria, artist, album, track) {
+		if !libraryFilterPassed(filterRequest.Criteria, artist, album, track, pathWords(path)) {
 			return nil
 		}
 
@@ -274,6 +276,17 @@ func libraryFilterPassed(criteria string, args... string) (bool) {
 		}
 	}
 	return false
+}
+
+func pathWords(path string) (newString string) {
+	re := regexp.MustCompile(`[/|_|-|-|(|)|\.]`)
+	for _, str := range strings.Split(re.ReplaceAllString(path, " "), " ") {
+		if strings.TrimSpace(str) == "" {
+			continue
+		}
+		newString += " " + str
+	}
+	return
 }
 
 // https://stackoverflow.com/questions/20401873/remove-invalid-utf-8-characters-from-a-string-go-lang
