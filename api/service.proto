@@ -11,6 +11,7 @@ service OpenVAService {
     rpc STT (stream STTRequest) returns (stream StreamingRecognizeResponse) {}
     rpc Library (LibraryFilterRequest) returns (LibraryItems) {}
     rpc HeartBeat (stream HeartBeatMessage) returns (stream HeartBeatMessage) {}
+    rpc HandlerServerSideCommand(TTSRequest) returns (TTSReply) {}
 }
 
 message HeartBeatMessage

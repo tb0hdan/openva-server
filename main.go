@@ -58,6 +58,13 @@ func (s *server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 	return
 }
 
+func (s *server) HandlerServerSideCommand(ctx context.Context, request *api.TTSRequest) (reply *api.TTSReply, err error) {
+	reply, err = s.TTSStringToMP3(ctx, &api.TTSRequest{
+		Text: "Unknown command yet",
+	})
+	return
+}
+
 func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 	fmt.Println("Send config...")
 	ctx := stream.Context()
