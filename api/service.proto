@@ -10,6 +10,30 @@ service OpenVAService {
     rpc TTSStringToMP3 (TTSRequest) returns (TTSReply) {}
     rpc STT (stream STTRequest) returns (stream StreamingRecognizeResponse) {}
     rpc Library (LibraryFilterRequest) returns (LibraryItems) {}
+    rpc HeartBeat (stream HeartBeatMessage) returns (stream HeartBeatMessage) {}
+}
+
+message HeartBeatMessage
+{
+    SystemInformationMessage SystemInformation = 1;
+    PlayerStateMessage PlayerState = 2;
+}
+
+message PlayerStateMessage {
+    string NowPlaying = 1;
+}
+
+message SystemInformationMessage {
+    string SystemUUID = 1;
+    int64 UptimeSinceEpoch = 2;
+    NetworkConfigurationMessage NetworkConfiguration = 3;
+}
+
+message NetworkConfigurationMessage {
+    string IPAddress = 1;
+    string NetMask = 2;
+    string Gateway = 3;
+    string DNSServers = 4;
 }
 
 message LibraryFilterRequest {

@@ -58,44 +58,6 @@ func (s *server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 	return
 }
 
-func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) (response api.StreamingRecognizeResponse) {
-	results := make([]*api.StreamingRecognitionResult, 0)
-	for _, res := range resp.Results {
-		alternatives := make([]*api.SpeechRecognitionAlternative, 0)
-		for _, alt := range res.Alternatives {
-			words := make([]*api.WordInfo, 0)
-			for _, word := range alt.Words {
-				wrd := &api.WordInfo{
-					StartTime: word.StartTime,
-					EndTime:   word.EndTime,
-					Word:      word.Word,
-				}
-				words = append(words, wrd)
-			}
-
-			alternative := &api.SpeechRecognitionAlternative{
-				Transcript: alt.Transcript,
-				Confidence: alt.Confidence,
-				Words:      words,
-			}
-			alternatives = append(alternatives, alternative)
-		}
-
-		result := &api.StreamingRecognitionResult{
-			Alternatives: alternatives,
-			IsFinal:      res.IsFinal,
-			Stability:    res.Stability,
-		}
-		results = append(results, result)
-	}
-
-	response = api.StreamingRecognizeResponse{
-		Results:         results,
-		SpeechEventType: api.StreamingRecognizeResponse_SpeechEventType(resp.SpeechEventType),
-	}
-	return
-}
-
 func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 	fmt.Println("Send config...")
 	ctx := stream.Context()
@@ -214,6 +176,78 @@ func (s *server) Library(ctx context.Context, filterRequest *api.LibraryFilterRe
 
 	libraryItems = &api.LibraryItems{
 		Items: items,
+	}
+	return
+}
+
+func (s *server) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err error) {
+	log.Println("HeartBeat stream started...")
+	ctx := stream.Context()
+	for {
+
+		// exit if context is done
+		// or continue
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		req, err := stream.Recv()
+		if err == io.EOF {
+			log.Println("HeartBeat stream completed...")
+			break
+		}
+		if err != nil {
+			log.Println(err)
+			break
+		}
+		// Send message back
+		// To be used as a latency measurement later
+		err = stream.Send(req)
+		if err != nil {
+			log.Println(err)
+			break
+		}
+		fmt.Println(req)
+	}
+	return
+}
+
+func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) (response api.StreamingRecognizeResponse) {
+	results := make([]*api.StreamingRecognitionResult, 0)
+	for _, res := range resp.Results {
+		alternatives := make([]*api.SpeechRecognitionAlternative, 0)
+		for _, alt := range res.Alternatives {
+			words := make([]*api.WordInfo, 0)
+			for _, word := range alt.Words {
+				wrd := &api.WordInfo{
+					StartTime: word.StartTime,
+					EndTime:   word.EndTime,
+					Word:      word.Word,
+				}
+				words = append(words, wrd)
+			}
+
+			alternative := &api.SpeechRecognitionAlternative{
+				Transcript: alt.Transcript,
+				Confidence: alt.Confidence,
+				Words:      words,
+			}
+			alternatives = append(alternatives, alternative)
+		}
+
+		result := &api.StreamingRecognitionResult{
+			Alternatives: alternatives,
+			IsFinal:      res.IsFinal,
+			Stability:    res.Stability,
+		}
+		results = append(results, result)
+	}
+
+	response = api.StreamingRecognizeResponse{
+		Results:         results,
+		SpeechEventType: api.StreamingRecognizeResponse_SpeechEventType(resp.SpeechEventType),
 	}
 	return
 }
