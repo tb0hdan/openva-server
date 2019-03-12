@@ -65,6 +65,11 @@ func (s *server) HandlerServerSideCommand(ctx context.Context, request *api.TTSR
 	return
 }
 
+func (s *server) HandlerServerSideCommandText(ctx context.Context, request *api.TTSRequest) (reply *api.TTSTextReply, err error) {
+	reply = &api.TTSTextReply{Text:"Unknown command yet"}
+	return
+}
+
 func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 	fmt.Println("Send config...")
 	ctx := stream.Context()

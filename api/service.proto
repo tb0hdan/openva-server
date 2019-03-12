@@ -12,6 +12,7 @@ service OpenVAService {
     rpc Library (LibraryFilterRequest) returns (LibraryItems) {}
     rpc HeartBeat (stream HeartBeatMessage) returns (stream HeartBeatMessage) {}
     rpc HandlerServerSideCommand(TTSRequest) returns (TTSReply) {}
+    rpc HandlerServerSideCommandText(TTSRequest) returns (TTSTextReply) {}
 }
 
 message HeartBeatMessage
@@ -62,6 +63,10 @@ message TTSRequest {
 
 message TTSReply {
     bytes MP3Response = 1;
+}
+
+message TTSTextReply {
+    string text = 1;
 }
 
 message STTRequest {
