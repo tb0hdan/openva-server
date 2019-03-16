@@ -179,7 +179,6 @@ func (s *server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 	switch first {
 	case "play":
 		textResponse, isError, items = handlePlayCommand(cmd)
-		fallthrough
 	case "shuffle":
 		textResponse = "Shuffling your library"
 		items, err = Library("")
@@ -189,10 +188,6 @@ func (s *server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 	default:
 		// 3rd-party tools like AVS and GHA
 		// ...
-		if len(textResponse) == 0 {
-			// fallthrough or no match
-			textResponse = "Will try searching that somewhere else"
-		}
 	}
 	reply = &api.OpenVAServerResponse{
 		TextResponse: textResponse,
