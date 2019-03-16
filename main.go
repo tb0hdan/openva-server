@@ -343,6 +343,17 @@ func fixUTF(r rune) rune {
 	return r
 }
 
+func NoIndexMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	handler := http.NewServeMux()
 
@@ -354,7 +365,7 @@ func main() {
 
 	fs := http.FileServer(http.Dir(dir))
 
-	handler.Handle("/music/", http.StripPrefix("/music/", fs))
+	handler.Handle("/music/", NoIndexMiddleware(http.StripPrefix("/music/", fs)))
 
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Nothing here")
