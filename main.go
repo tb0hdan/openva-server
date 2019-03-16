@@ -58,18 +58,6 @@ func (s *server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 	return
 }
 
-func (s *server) HandlerServerSideCommand(ctx context.Context, request *api.TTSRequest) (reply *api.TTSReply, err error) {
-	reply, err = s.TTSStringToMP3(ctx, &api.TTSRequest{
-		Text: "Unknown command yet",
-	})
-	return
-}
-
-func (s *server) HandlerServerSideCommandText(ctx context.Context, request *api.TTSRequest) (reply *api.TTSTextReply, err error) {
-	reply = &api.TTSTextReply{Text:"Unknown command yet"}
-	return
-}
-
 func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 	fmt.Println("Send config...")
 	ctx := stream.Context()
@@ -129,69 +117,6 @@ func (s *server) STT(stream api.OpenVAService_STTServer) (err error) {
 	return
 }
 
-func (s *server) Library(ctx context.Context, filterRequest *api.LibraryFilterRequest) (libraryItems *api.LibraryItems, err error) {
-	items := make([]*api.LibraryItem, 0)
-	dir, err := filepath.EvalSymlinks(MusicDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !strings.HasSuffix(path, ".mp3") {
-			return nil
-		}
-
-		file, err := os.Open(path)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		artist := ""
-		album := ""
-		track := ""
-
-		m, err := tag.ReadFrom(file)
-		if err != nil {
-			log.Println(path, err)
-
-		} else {
-			artist = strings.Map(fixUTF, m.Artist())
-			album = strings.Map(fixUTF, m.Album())
-			track = strings.Map(fixUTF, m.Title())
-		}
-
-		if !libraryFilterPassed(filterRequest.Criteria, artist, album, track, pathWords(path)) {
-			return nil
-		}
-
-		escapedPath := ""
-		for _, r := range strings.Split(strings.TrimPrefix(path, dir), "/") {
-			escapedPath += "/" + url.PathEscape(r)
-		}
-
-		if strings.HasPrefix(escapedPath, "//") {
-			escapedPath = strings.TrimPrefix(escapedPath, "/")
-		}
-
-		item := &api.LibraryItem{
-			URL:    "http://localhost" + HTTPPort + "/music" + escapedPath,
-			Artist: artist,
-			Album:  album,
-			Track:  track,
-		}
-		items = append(items, item)
-
-		return nil
-	})
-
-	libraryItems = &api.LibraryItems{
-		Items: items,
-	}
-	return
-}
-
 func (s *server) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err error) {
 	log.Println("HeartBeat stream started...")
 	ctx := stream.Context()
@@ -222,6 +147,83 @@ func (s *server) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err error)
 			break
 		}
 		fmt.Println(req)
+	}
+	return
+}
+
+func (s *server) ClientConfig(ctx context.Context, request *api.ClientMessage) (reply *api.ClientConfigMessage, err error) {
+	reply = &api.ClientConfigMessage{
+		Locale: &api.LocaleMessage{
+			LocaleName: "en-US",
+			LocaleLanguage: "English",
+			VolumeMessage: "volume",
+			PauseMessage: "pause",
+			ResumeMessage: "resume",
+			StopMessage: "stop",
+			NextMessage: "next",
+			PreviousMessage: "previous",
+			RebootMessage: "reboot",
+		},
+	}
+	return
+}
+
+func (s *server) HandleServerSideCommand(ctx context.Context, request *api.TTSRequest) (reply *api.OpenVAServerResponse, err error) {
+	var (
+		textResponse = "Unknown command"
+		isError = false
+		items = make([]*api.LibraryItem, 0)
+	)
+	cmd := request.Text
+	first := strings.ToLower(strings.Split(cmd, " ")[0])
+	switch first {
+	case "play":
+		textResponse, isError, items = handlePlayCommand(cmd)
+		fallthrough
+	case "shuffle":
+		textResponse = "Shuffling your library"
+		items, err = Library("")
+		if err != nil {
+			isError = true
+		}
+	default:
+		// 3rd-party tools like AVS and GHA
+		// ...
+		if len(textResponse) == 0 {
+			// fallthrough or no match
+			textResponse = "Will try searching that somewhere else"
+		}
+	}
+	reply = &api.OpenVAServerResponse{
+		TextResponse: textResponse,
+		IsError: isError,
+		Items: items,
+	}
+	return
+}
+
+func handlePlayCommand(cmd string) (textResponse string, isError bool, items []*api.LibraryItem) {
+	var (
+		what string
+		err error
+	)
+	re := regexp.MustCompile(`^play (.*) from my library`)
+	submatch := re.FindStringSubmatch(strings.ToLower(cmd))
+	if re.MatchString(cmd) && len(submatch) > 1 {
+		what = strings.TrimSpace(submatch[1])
+	}
+	if len(what) == 0 {
+		// Command starts with play but is not a library
+		return
+	}
+
+	textResponse = fmt.Sprintf("Playing %s", what)
+	items, err = Library(what)
+	if err != nil {
+		isError = true
+	}
+	if len(items) == 0 {
+		textResponse = fmt.Sprintf("I could not find %s", what)
 	}
 	return
 }
@@ -302,6 +304,65 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 	}); err != nil {
 		log.Fatal(err)
 	}
+	return
+}
+
+func Library(criteria string) (libraryItems []*api.LibraryItem, err error) {
+	dir, err := filepath.EvalSymlinks(MusicDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !strings.HasSuffix(path, ".mp3") {
+			return nil
+		}
+
+		file, err := os.Open(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		artist := ""
+		album := ""
+		track := ""
+
+		m, err := tag.ReadFrom(file)
+		if err != nil {
+			log.Println(path, err)
+
+		} else {
+			artist = strings.Map(fixUTF, m.Artist())
+			album = strings.Map(fixUTF, m.Album())
+			track = strings.Map(fixUTF, m.Title())
+		}
+
+		if !libraryFilterPassed(criteria, artist, album, track, pathWords(path)) {
+			return nil
+		}
+
+		escapedPath := ""
+		for _, r := range strings.Split(strings.TrimPrefix(path, dir), "/") {
+			escapedPath += "/" + url.PathEscape(r)
+		}
+
+		if strings.HasPrefix(escapedPath, "//") {
+			escapedPath = strings.TrimPrefix(escapedPath, "/")
+		}
+
+		item := &api.LibraryItem{
+			URL:    "http://localhost" + HTTPPort + "/music" + escapedPath,
+			Artist: artist,
+			Album:  album,
+			Track:  track,
+		}
+		libraryItems = append(libraryItems, item)
+
+		return nil
+	})
+
 	return
 }
 

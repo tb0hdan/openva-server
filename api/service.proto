@@ -9,10 +9,35 @@ import "google/protobuf/duration.proto";
 service OpenVAService {
     rpc TTSStringToMP3 (TTSRequest) returns (TTSReply) {}
     rpc STT (stream STTRequest) returns (stream StreamingRecognizeResponse) {}
-    rpc Library (LibraryFilterRequest) returns (LibraryItems) {}
     rpc HeartBeat (stream HeartBeatMessage) returns (stream HeartBeatMessage) {}
-    rpc HandlerServerSideCommand(TTSRequest) returns (TTSReply) {}
-    rpc HandlerServerSideCommandText(TTSRequest) returns (TTSTextReply) {}
+    rpc ClientConfig (ClientMessage) returns (ClientConfigMessage) {}
+    rpc HandleServerSideCommand(TTSRequest) returns (OpenVAServerResponse) {}
+}
+
+message OpenVAServerResponse {
+    string TextResponse = 1;
+    bool IsError = 2;
+    repeated LibraryItem items = 3;
+}
+
+message ClientMessage {
+    string SystemUUID = 1;
+}
+
+message ClientConfigMessage {
+    LocaleMessage Locale = 1;
+}
+
+message LocaleMessage {
+    string LocaleName = 1;
+    string LocaleLanguage = 2;
+    string VolumeMessage = 3;
+    string PauseMessage = 4;
+    string ResumeMessage = 5;
+    string StopMessage = 6;
+    string NextMessage = 7;
+    string PreviousMessage = 8;
+    string RebootMessage = 9;
 }
 
 message HeartBeatMessage
@@ -38,12 +63,6 @@ message NetworkConfigurationMessage {
     string DNSServers = 4;
 }
 
-message LibraryFilterRequest {
-    string criteria = 1;
-    int32 limit = 2;
-    int32 page = 3;
-}
-
 message LibraryItem {
     string URL = 1;
     string Artist = 2;
@@ -52,21 +71,12 @@ message LibraryItem {
     int32 Length = 5;
 }
 
-
-message LibraryItems {
-    repeated LibraryItem items = 1;
-}
-
 message TTSRequest {
     string text = 1;
 }
 
 message TTSReply {
     bytes MP3Response = 1;
-}
-
-message TTSTextReply {
-    string text = 1;
 }
 
 message STTRequest {
