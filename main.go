@@ -213,7 +213,7 @@ func handlePlayCommand(cmd string) (textResponse string, isError bool, items []*
 		return
 	}
 
-	textResponse = fmt.Sprintf("Playing %s", what)
+	textResponse = fmt.Sprintf("Playing %s from your library", what)
 	items, err = Library(what)
 	if err != nil {
 		isError = true
