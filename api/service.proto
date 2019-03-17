@@ -38,6 +38,7 @@ message LocaleMessage {
     string NextMessage = 7;
     string PreviousMessage = 8;
     string RebootMessage = 9;
+    string CouldNotUnderstandMessage = 10;
 }
 
 message HeartBeatMessage

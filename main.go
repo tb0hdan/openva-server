@@ -163,6 +163,7 @@ func (s *server) ClientConfig(ctx context.Context, request *api.ClientMessage) (
 			NextMessage: "next",
 			PreviousMessage: "previous",
 			RebootMessage: "reboot",
+			CouldNotUnderstandMessage: "I could not understand you",
 		},
 	}
 	return
