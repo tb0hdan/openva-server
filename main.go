@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/dhowden/tag"
 	"github.com/tb0hdan/openva-server/api"
@@ -25,10 +26,12 @@ import (
 
 	"cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
+
+	"google.golang.org/grpc/peer"
 )
 
 const (
-	port     = ":50001"
+	GRPCPort = ":50001"
 	HTTPPort = ":50002"
 	MusicDir = "./music"
 )
@@ -154,15 +157,15 @@ func (s *server) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err error)
 func (s *server) ClientConfig(ctx context.Context, request *api.ClientMessage) (reply *api.ClientConfigMessage, err error) {
 	reply = &api.ClientConfigMessage{
 		Locale: &api.LocaleMessage{
-			LocaleName: "en-US",
-			LocaleLanguage: "English",
-			VolumeMessage: "volume",
-			PauseMessage: "pause",
-			ResumeMessage: "resume",
-			StopMessage: "stop",
-			NextMessage: "next",
-			PreviousMessage: "previous",
-			RebootMessage: "reboot",
+			LocaleName:                "en-US",
+			LocaleLanguage:            "English",
+			VolumeMessage:             "volume",
+			PauseMessage:              "pause",
+			ResumeMessage:             "resume",
+			StopMessage:               "stop",
+			NextMessage:               "next",
+			PreviousMessage:           "previous",
+			RebootMessage:             "reboot",
 			CouldNotUnderstandMessage: "I could not understand you",
 		},
 	}
@@ -172,17 +175,30 @@ func (s *server) ClientConfig(ctx context.Context, request *api.ClientMessage) (
 func (s *server) HandleServerSideCommand(ctx context.Context, request *api.TTSRequest) (reply *api.OpenVAServerResponse, err error) {
 	var (
 		textResponse = "Unknown command"
-		isError = false
-		items = make([]*api.LibraryItem, 0)
+		isError      = false
+		items        = make([]*api.LibraryItem, 0)
 	)
+	peerInfo, ok := peer.FromContext(ctx)
+	if !ok {
+		log.Println("Peer not ok")
+		return nil, errors.New("Go away")
+	}
+
+	if peerInfo.Addr.Network() != "tcp" {
+		log.Println("Peer tried using something else than TCP")
+		return nil, errors.New("Go away. No, really")
+	}
+
+	log.Println(peerInfo.Addr.String())
+	token := "12345"
 	cmd := request.Text
 	first := strings.ToLower(strings.Split(cmd, " ")[0])
 	switch first {
 	case "play":
-		textResponse, isError, items = handlePlayCommand(cmd)
+		textResponse, isError, items = handlePlayCommand(cmd, token)
 	case "shuffle":
 		textResponse = "Shuffling your library"
-		items, err = Library("")
+		items, err = Library("", token)
 		if err != nil {
 			isError = true
 		}
@@ -192,34 +208,51 @@ func (s *server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 	}
 	reply = &api.OpenVAServerResponse{
 		TextResponse: textResponse,
-		IsError: isError,
-		Items: items,
+		IsError:      isError,
+		Items:        items,
 	}
 	return
 }
 
-func handlePlayCommand(cmd string) (textResponse string, isError bool, items []*api.LibraryItem) {
-	var (
-		what string
-		err error
-	)
-	re := regexp.MustCompile(`^play (.*) from my library`)
-	submatch := re.FindStringSubmatch(strings.ToLower(cmd))
-	if re.MatchString(cmd) && len(submatch) > 1 {
-		what = strings.TrimSpace(submatch[1])
-	}
-	if len(what) == 0 {
-		// Command starts with play but is not a library
-		return
-	}
+var PlayRegs = map[string]func(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem){
+	`^play (.*) from my library$`: handlePlayLibraryCommand,
+	`^play some music by (.*)$`:   handlePlayLibraryCommand,
+	`^play (.*) by (.*)$`:         handlePlayLibraryCommand,
+}
 
+func handlePlayLibraryCommand(what, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
+	var err error
 	textResponse = fmt.Sprintf("Playing %s from your library", what)
-	items, err = Library(what)
+	items, err = Library(what, token)
 	if err != nil {
 		isError = true
 	}
 	if len(items) == 0 {
 		textResponse = fmt.Sprintf("I could not find %s", what)
+	}
+	return
+}
+
+func handlePlayCommand(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
+	for reg, fn := range PlayRegs {
+		var what string
+		re := regexp.MustCompile(reg)
+		submatch := re.FindStringSubmatch(strings.ToLower(cmd))
+		for i := len(submatch) - 1; i > 0; i-- {
+			if i > 1 {
+				what += strings.TrimSpace(submatch[i]) + " - "
+			} else {
+				what += strings.TrimSpace(submatch[i])
+			}
+		}
+		what = strings.TrimSpace(what)
+		log.Println(what)
+		if len(what) == 0 {
+			// Command starts with play but didn't match regexp
+			continue
+		}
+		textResponse, isError, items = fn(what, token)
+		break
 	}
 	return
 }
@@ -303,7 +336,7 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 	return
 }
 
-func Library(criteria string) (libraryItems []*api.LibraryItem, err error) {
+func Library(criteria, token string) (libraryItems []*api.LibraryItem, err error) {
 	dir, err := filepath.EvalSymlinks(MusicDir)
 	if err != nil {
 		log.Fatal(err)
@@ -349,7 +382,7 @@ func Library(criteria string) (libraryItems []*api.LibraryItem, err error) {
 		}
 
 		item := &api.LibraryItem{
-			URL:    "http://localhost" + HTTPPort + "/music" + escapedPath,
+			URL:    "http://localhost" + HTTPPort + "/music" + escapedPath + fmt.Sprintf("?token=%s", token),
 			Artist: artist,
 			Album:  album,
 			Track:  track,
@@ -362,7 +395,14 @@ func Library(criteria string) (libraryItems []*api.LibraryItem, err error) {
 	return
 }
 
-func libraryFilterPassed(criteria string, args... string) (bool) {
+func libraryFilterPassed(criteria string, args ...string) bool {
+	var (
+		artist       string
+		//album        string
+		track        string
+		searchArtist string
+		searchTrack  string
+	)
 	if len(criteria) == 0 {
 		return true
 	}
@@ -372,10 +412,36 @@ func libraryFilterPassed(criteria string, args... string) (bool) {
 	}
 	criteria = strings.ToLower(criteria)
 
+	if len(strings.Split(criteria, " - ")) >= 2 {
+		searchArtist = strings.TrimSpace(strings.Split(criteria, " - ")[0])
+		searchTrack = strings.TrimSpace(strings.Split(criteria, " - ")[1])
+	}
+
+	// artist, album, track
+	if len(args) > 3 {
+		artist = strings.TrimSpace(args[0])
+		// album = args[1]
+		track = strings.TrimSpace(args[2])
+	}
+
 	for _, arg := range args {
 		arg = strings.ToLower(arg)
 		if len(arg) > 0 && strings.Contains(arg, criteria) {
 			return true
+		}
+		// Special case: Artist Name - Track Name
+		if searchArtist == "" || searchTrack == "" {
+			continue
+		}
+		if artist == "" || track == "" {
+			continue
+		}
+		if strings.ToLower(searchArtist) != strings.ToLower(artist) {
+			continue
+		}
+		if strings.ToLower(searchTrack) == strings.ToLower(track) {
+			return true
+
 		}
 	}
 	return false
@@ -400,6 +466,28 @@ func fixUTF(r rune) rune {
 	return r
 }
 
+func VerifyToken(token string) bool {
+	log.Println("Token: ", token)
+	return true
+}
+
+func AuthenticationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		values := r.URL.Query()
+		token_values := values["token"]
+		tokenValid := false
+		if len(token_values) > 0 {
+			token := token_values[0]
+			tokenValid = VerifyToken(token)
+		}
+		if !tokenValid {
+			http.Error(w, "403 Forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func NoIndexMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/") {
@@ -422,7 +510,9 @@ func main() {
 
 	fs := http.FileServer(http.Dir(dir))
 
-	handler.Handle("/music/", NoIndexMiddleware(http.StripPrefix("/music/", fs)))
+	handler.Handle("/music/", AuthenticationMiddleware(
+		NoIndexMiddleware(http.StripPrefix("/music/", fs))),
+	)
 
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Nothing here")
@@ -430,18 +520,20 @@ func main() {
 
 	srv := http.Server{Addr: HTTPPort, Handler: handler}
 	go func() {
+		log.Printf("Library server started at %s\n", HTTPPort)
 		if err := srv.ListenAndServe(); err != nil {
 			log.Fatalf("failed to serve http: %v", err)
 		}
 	}()
 
-	lis, err := net.Listen("tcp", port)
+	lis, err := net.Listen("tcp", GRPCPort)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
 	api.RegisterOpenVAServiceServer(s, &server{})
 
+	log.Printf("gRPC server started at %s\n", GRPCPort)
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
