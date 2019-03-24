@@ -189,16 +189,18 @@ func (s *server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 		return nil, errors.New("Go away. No, really")
 	}
 
+	serverIP := ServerIPForClientHostPort(peerInfo.Addr.String())
+
 	log.Println(peerInfo.Addr.String())
 	token := "12345"
 	cmd := request.Text
 	first := strings.ToLower(strings.Split(cmd, " ")[0])
 	switch first {
 	case "play":
-		textResponse, isError, items = handlePlayCommand(cmd, token)
+		textResponse, isError, items = handlePlayCommand(cmd, token, serverIP)
 	case "shuffle":
 		textResponse = "Shuffling your library"
-		items, err = Library("", token)
+		items, err = Library("", token, serverIP)
 		if err != nil {
 			isError = true
 		}
@@ -214,16 +216,16 @@ func (s *server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 	return
 }
 
-var PlayRegs = map[string]func(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem){
+var PlayRegs = map[string]func(cmd, token, serverIP string) (textResponse string, isError bool, items []*api.LibraryItem){
 	`^play (.*) from my library$`: handlePlayLibraryCommand,
 	`^play some music by (.*)$`:   handlePlayLibraryCommand,
 	`^play (.*) by (.*)$`:         handlePlayLibraryCommand,
 }
 
-func handlePlayLibraryCommand(what, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
+func handlePlayLibraryCommand(what, token, serverIP string) (textResponse string, isError bool, items []*api.LibraryItem) {
 	var err error
 	textResponse = fmt.Sprintf("Playing %s from your library", what)
-	items, err = Library(what, token)
+	items, err = Library(what, token, serverIP)
 	if err != nil {
 		isError = true
 	}
@@ -233,7 +235,7 @@ func handlePlayLibraryCommand(what, token string) (textResponse string, isError 
 	return
 }
 
-func handlePlayCommand(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
+func handlePlayCommand(cmd, token, serverIP string) (textResponse string, isError bool, items []*api.LibraryItem) {
 	for reg, fn := range PlayRegs {
 		var what string
 		re := regexp.MustCompile(reg)
@@ -251,7 +253,7 @@ func handlePlayCommand(cmd, token string) (textResponse string, isError bool, it
 			// Command starts with play but didn't match regexp
 			continue
 		}
-		textResponse, isError, items = fn(what, token)
+		textResponse, isError, items = fn(what, token, serverIP)
 		break
 	}
 	return
@@ -336,7 +338,7 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 	return
 }
 
-func Library(criteria, token string) (libraryItems []*api.LibraryItem, err error) {
+func Library(criteria, token, serverIP string) (libraryItems []*api.LibraryItem, err error) {
 	dir, err := filepath.EvalSymlinks(MusicDir)
 	if err != nil {
 		log.Fatal(err)
@@ -382,7 +384,7 @@ func Library(criteria, token string) (libraryItems []*api.LibraryItem, err error
 		}
 
 		item := &api.LibraryItem{
-			URL:    "http://localhost" + HTTPPort + "/music" + escapedPath + fmt.Sprintf("?token=%s", token),
+			URL:    fmt.Sprintf("http://%s", serverIP) + HTTPPort + "/music" + escapedPath + fmt.Sprintf("?token=%s", token),
 			Artist: artist,
 			Album:  album,
 			Track:  track,
@@ -397,7 +399,7 @@ func Library(criteria, token string) (libraryItems []*api.LibraryItem, err error
 
 func libraryFilterPassed(criteria string, args ...string) bool {
 	var (
-		artist       string
+		artist string
 		//album        string
 		track        string
 		searchArtist string
