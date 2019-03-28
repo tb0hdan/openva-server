@@ -1,4 +1,4 @@
-package main
+package netutils
 
 import (
 	"github.com/glendc/go-external-ip"

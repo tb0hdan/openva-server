@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/dhowden/tag"
 	"github.com/tb0hdan/openva-server/api"
+	"github.com/tb0hdan/openva-server/netutils"
 	"github.com/tb0hdan/openva-server/tts"
 	"google.golang.org/api/option"
 	"google.golang.org/api/transport"
@@ -189,7 +190,7 @@ func (s *server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 		return nil, errors.New("Go away. No, really")
 	}
 
-	serverIP := ServerIPForClientHostPort(peerInfo.Addr.String())
+	serverIP := netutils.ServerIPForClientHostPort(peerInfo.Addr.String())
 
 	log.Println(peerInfo.Addr.String())
 	token := "12345"
