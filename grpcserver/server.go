@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tb0hdan/openva-server/fileutils"
 	"io"
 	"io/ioutil"
 	"log"
@@ -48,7 +49,10 @@ func (s *GRPCServer) TTSStringToMP3(ctx context.Context, request *api.TTSRequest
 	_, err = os.Open(cachedFile)
 	if os.IsNotExist(err) {
 		fname := tts.Say(request.Text)
-		os.Rename(fname, cachedFile)
+		err = fileutils.MoveFile(fname, cachedFile)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	result, err := ioutil.ReadFile(cachedFile)
