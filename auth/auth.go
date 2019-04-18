@@ -1,28 +1,115 @@
 package auth
 
 import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strings"
+
+	"google.golang.org/grpc/metadata"
 )
 
-func VerifyToken(token string) bool {
-	log.Println("Token: ", token)
-	return true
+type Authenticator struct {
+	authFileName string
+	authData map[string]string
 }
 
-func AuthenticationMiddleware(next http.Handler) http.Handler {
+func (a *Authenticator) ReadAuthData(fileName string) (authMap map[string]string, err error) {
+	authMap = make(map[string]string)
+	file, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lines := 0
+	for scanner.Scan() {
+		lines++
+		line := strings.TrimSpace(scanner.Text())
+		if len(line) == 0 {
+			continue
+		}
+		if len(strings.Split(line, ":")) != 2 {
+			err = errors.New(fmt.Sprintf("wrong auth format on line %d", lines))
+			break
+		}
+		authMap[strings.Split(line, ":")[0]] = strings.Split(line, ":")[1]
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return
+}
+
+func (a *Authenticator) VerifyToken(token string) (status bool, errMsg string) {
+	for systemUUID, systemToken := range a.authData {
+		if token == systemToken {
+			status = true
+			log.Printf("Validated token for %s", systemUUID)
+			break
+		}
+	}
+	if !status {
+		errMsg = "no valid token found"
+	}
+	return
+}
+
+func (a *Authenticator) AuthenticationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		values := r.URL.Query()
 		token_values := values["token"]
-		tokenValid := false
-		if len(token_values) > 0 {
-			token := token_values[0]
-			tokenValid = VerifyToken(token)
+
+		if len(token_values) == 0 {
+			http.Error(w, "403 Forbidden. No token.", http.StatusForbidden)
+			return
+
 		}
-		if !tokenValid {
-			http.Error(w, "403 Forbidden", http.StatusForbidden)
+
+		if ok, errMsg := a.VerifyToken(token_values[0]); !ok  {
+			http.Error(w, fmt.Sprintf("403 Forbidden. %s", errMsg), http.StatusForbidden)
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (a *Authenticator) MyGRPCAuthFunction(ctx context.Context) (newContext context.Context, err error) {
+	meta, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ctx, errors.New("authorization failed, no metadata")
+	}
+	if len(meta.Get("authorization")) == 0 {
+		return ctx, errors.New("authorization failed, invalid token")
+	}
+
+	if ok, errMsg := a.VerifyToken(meta.Get("authorization")[0]); !ok {
+		return ctx, errors.New(fmt.Sprintf("authorization failed, %s", errMsg))
+	}
+
+	return ctx, nil
+}
+
+func NewAuthenticator(authFileName string) (*Authenticator, error) {
+	authenticator := &Authenticator{
+		authFileName: authFileName,
+	}
+	authData, err := authenticator.ReadAuthData(authFileName)
+	if err != nil {
+		return nil, err
+	}
+	authenticator.authData = authData
+
+	return authenticator, nil
 }

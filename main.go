@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	log "github.com/sirupsen/logrus"
 	"net"
 	"net/http"
@@ -14,6 +15,10 @@ import (
 	"google.golang.org/grpc"
 	"github.com/shkh/lastfm-go/lastfm"
 	"github.com/spf13/viper"
+
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+
 
 	"github.com/tb0hdan/openva-server/api"
 	"github.com/tb0hdan/openva-server/auth"
@@ -54,9 +59,14 @@ func main() {
 		log.Fatal("Please create ./music symlink")
 	}
 
+	authenticator, err := auth.NewAuthenticator("../passwd")
+	if err != nil {
+		log.Fatalf("Auth file error: %s", err)
+	}
+
 	fs := http.FileServer(http.Dir(dir))
 
-	handler.Handle("/music/", auth.AuthenticationMiddleware(
+	handler.Handle("/music/", authenticator.AuthenticationMiddleware(
 		NoIndexMiddleware(http.StripPrefix("/music/", fs))),
 	)
 
@@ -76,7 +86,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	server := grpc.NewServer()
+	server := grpc.NewServer(
+		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
+			grpc_auth.StreamServerInterceptor(authenticator.MyGRPCAuthFunction),
+			grpc_recovery.StreamServerInterceptor(),
+		)),
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+			grpc_auth.UnaryServerInterceptor(authenticator.MyGRPCAuthFunction),
+			grpc_recovery.UnaryServerInterceptor(),
+		)),
+		)
 
 	openVAServer := grpcserver.NewGRPCServer(MusicDir, HTTPPort)
 	api.RegisterOpenVAServiceServer(server, openVAServer)
