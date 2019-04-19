@@ -97,7 +97,7 @@ func main() {
 		)),
 		)
 
-	openVAServer := grpcserver.NewGRPCServer(MusicDir, HTTPPort)
+	openVAServer := grpcserver.NewGRPCServer(MusicDir, HTTPPort, authenticator)
 	api.RegisterOpenVAServiceServer(server, openVAServer)
 
 	log.Printf("gRPC server started at %s\n", GRPCPort)

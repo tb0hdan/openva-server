@@ -10,6 +10,7 @@ require (
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/protobuf v1.3.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
+	github.com/pkg/errors v0.8.0
 	github.com/shirou/gopsutil v2.18.12+incompatible
 	github.com/shkh/lastfm-go v0.0.0-20180729041255-29483feae857
 	github.com/sirupsen/logrus v1.4.1

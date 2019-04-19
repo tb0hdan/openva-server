@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tb0hdan/openva-server/auth"
 	"github.com/tb0hdan/openva-server/fileutils"
 	"io"
 	"io/ioutil"
@@ -36,6 +37,7 @@ type GRPCServer struct {
 	NodeStates        map[string]*NodeState
 	MusicDir          string
 	HTTPServerAddress string
+	Authenticator *auth.Authenticator
 }
 
 func (s *GRPCServer) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (reply *api.TTSReply, err error) {
@@ -205,7 +207,13 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 	}
 
 	log.Println(peerInfo.Addr.String())
-	token := "12345"
+
+
+	token, err := s.Authenticator.GetTokenFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	cmd := request.Text
 	first := strings.ToLower(strings.Split(cmd, " ")[0])
 	switch first {
@@ -229,10 +237,11 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 	return
 }
 
-func NewGRPCServer(MusicDir, HTTPServerAddress string) (s *GRPCServer) {
+func NewGRPCServer(MusicDir, HTTPServerAddress string, authenticator *auth.Authenticator) (s *GRPCServer) {
 	s = &GRPCServer{
 		MusicDir:          MusicDir,
 		HTTPServerAddress: HTTPServerAddress,
+		Authenticator: authenticator,
 	}
 	s.NodeStates = make(map[string]*NodeState)
 	return s

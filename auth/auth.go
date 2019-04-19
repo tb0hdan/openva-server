@@ -3,12 +3,14 @@ package auth
 import (
 	"bufio"
 	"context"
-	"errors"
+	//"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+
+"github.com/pkg/errors"
 
 	"google.golang.org/grpc/metadata"
 )
@@ -85,16 +87,26 @@ func (a *Authenticator) AuthenticationMiddleware(next http.Handler) http.Handler
 	})
 }
 
-func (a *Authenticator) MyGRPCAuthFunction(ctx context.Context) (newContext context.Context, err error) {
+func (a *Authenticator) GetTokenFromContext(ctx context.Context) (token string, err error) {
 	meta, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return ctx, errors.New("authorization failed, no metadata")
+		return "", errors.New("authorization failed, no metadata")
 	}
 	if len(meta.Get("authorization")) == 0 {
-		return ctx, errors.New("authorization failed, invalid token")
+		return "", errors.New("authorization failed, invalid token")
 	}
 
-	if ok, errMsg := a.VerifyToken(meta.Get("authorization")[0]); !ok {
+	token = meta.Get("authorization")[0]
+	return
+}
+
+func (a *Authenticator) MyGRPCAuthFunction(ctx context.Context) (newContext context.Context, err error) {
+	token, err := a.GetTokenFromContext(ctx)
+	if err != nil {
+		return ctx, errors.Wrap(err, "grpc auth failed")
+	}
+
+	if ok, errMsg := a.VerifyToken(token); !ok {
 		return ctx, errors.New(fmt.Sprintf("authorization failed, %s", errMsg))
 	}
 
