@@ -8,7 +8,7 @@ import (
 	"github.com/tb0hdan/openva-server/fileutils"
 	"io"
 	"io/ioutil"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"path"
 	"regexp"
@@ -186,6 +186,7 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 	var (
 		textResponse = "Unknown command"
 		isError      = false
+		noCmdMatches = false
 		items        = make([]*api.LibraryItem, 0)
 	)
 	peerInfo, ok := peer.FromContext(ctx)
@@ -218,7 +219,7 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 	first := strings.ToLower(strings.Split(cmd, " ")[0])
 	switch first {
 	case "play":
-		textResponse, isError, items = handlePlayCommand(cmd, token, serverIP, s)
+		textResponse, isError, noCmdMatches, items = handlePlayCommand(cmd, token, serverIP, s)
 	case "shuffle":
 		textResponse = "Shuffling your library"
 		items, err = localLibrary.Library("", token, serverIP)
@@ -229,6 +230,12 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 		// 3rd-party tools like AVS and GHA
 		// ...
 	}
+
+	if noCmdMatches {
+		// unknown play command -> forward
+		textResponse, isError, items = PlayForward(cmd, token)
+	}
+
 	reply = &api.OpenVAServerResponse{
 		TextResponse: textResponse,
 		IsError:      isError,
@@ -270,7 +277,8 @@ func handlePlayLibraryCommand(what, token, serverIP string, srv *GRPCServer) (te
 	return
 }
 
-func handlePlayCommand(cmd, token, serverIP string, srv *GRPCServer) (textResponse string, isError bool, items []*api.LibraryItem) {
+func handlePlayCommand(cmd, token, serverIP string, srv *GRPCServer) (textResponse string, isError bool, noCmdMatches bool, items []*api.LibraryItem) {
+	matches := 0
 	for reg, fn := range PlayRegs {
 		var what string
 		re := regexp.MustCompile(reg)
@@ -288,8 +296,12 @@ func handlePlayCommand(cmd, token, serverIP string, srv *GRPCServer) (textRespon
 			// Command starts with play but didn't match regexp
 			continue
 		}
+		matches++
 		textResponse, isError, items = fn(what, token, serverIP, srv)
 		break
+	}
+	if matches == 0 {
+		noCmdMatches = true
 	}
 	return
 }
@@ -332,5 +344,11 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 	}); err != nil {
 		log.Fatal(err)
 	}
+	return
+}
+
+
+func PlayForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem){
+	log.Debug(cmd, token)
 	return
 }
