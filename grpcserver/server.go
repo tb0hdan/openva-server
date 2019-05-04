@@ -220,6 +220,10 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 	switch first {
 	case "play":
 		textResponse, isError, noCmdMatches, items = handlePlayCommand(cmd, token, serverIP, s)
+		if noCmdMatches {
+			// unknown play command -> forward
+			textResponse, isError, items = PlayForward(cmd, token)
+		}
 	case "shuffle":
 		textResponse = "Shuffling your library"
 		items, err = localLibrary.Library("", token, serverIP)
@@ -228,13 +232,9 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 		}
 	default:
 		// 3rd-party tools like AVS and GHA
-		// ...
+		textResponse, isError, items = UnknownCmdForward(cmd, token)
 	}
 
-	if noCmdMatches {
-		// unknown play command -> forward
-		textResponse, isError, items = PlayForward(cmd, token)
-	}
 
 	reply = &api.OpenVAServerResponse{
 		TextResponse: textResponse,
@@ -349,6 +349,11 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 
 
 func PlayForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem){
+	log.Debug(cmd, token)
+	return
+}
+
+func UnknownCmdForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
 	log.Debug(cmd, token)
 	return
 }
