@@ -9,6 +9,8 @@ import (
 	"io"
 	"io/ioutil"
 	log "github.com/sirupsen/logrus"
+	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
@@ -291,7 +293,7 @@ func handlePlayCommand(cmd, token, serverIP string, srv *GRPCServer) (textRespon
 			}
 		}
 		what = strings.TrimSpace(what)
-		log.Println(what)
+		log.Debug(what)
 		if len(what) == 0 {
 			// Command starts with play but didn't match regexp
 			continue
@@ -300,7 +302,7 @@ func handlePlayCommand(cmd, token, serverIP string, srv *GRPCServer) (textRespon
 		textResponse, isError, items = fn(what, token, serverIP, srv)
 		break
 	}
-	if matches == 0 {
+	if matches == 0 || len(items) == 0 {
 		noCmdMatches = true
 	}
 	return
@@ -350,6 +352,11 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 
 func PlayForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem){
 	log.Debug(cmd, token)
+	fullURL := "http://localhost:49999/play/" + url.PathEscape(cmd)
+	_, err := http.DefaultClient.Post(fullURL, "", nil)
+	if err != nil {
+		log.Error(err)
+	}
 	return
 }
 
