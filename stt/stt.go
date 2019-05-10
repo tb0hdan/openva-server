@@ -5,7 +5,7 @@ import (
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
 
-func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) (response api.StreamingRecognizeResponse) {
+func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) api.StreamingRecognizeResponse {
 	results := make([]*api.StreamingRecognitionResult, 0)
 	for _, res := range resp.Results {
 		alternatives := make([]*api.SpeechRecognitionAlternative, 0)
@@ -36,9 +36,8 @@ func GoogleSTTToOpenVASTT(resp *speechpb.StreamingRecognizeResponse) (response a
 		results = append(results, result)
 	}
 
-	response = api.StreamingRecognizeResponse{
+	return api.StreamingRecognizeResponse{
 		Results:         results,
 		SpeechEventType: api.StreamingRecognizeResponse_SpeechEventType(resp.SpeechEventType),
 	}
-	return
 }

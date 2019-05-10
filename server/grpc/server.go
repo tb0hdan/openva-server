@@ -1,21 +1,22 @@
-package grpcserver
+package grpc
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tb0hdan/openva-server/auth"
-	"github.com/tb0hdan/openva-server/fileutils"
 	"io"
 	"io/ioutil"
-	log "github.com/sirupsen/logrus"
-	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"regexp"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/tb0hdan/openva-server/auth"
+	httpclient "github.com/tb0hdan/openva-server/client/http"
+	"github.com/tb0hdan/openva-server/fileutils"
+	"github.com/tb0hdan/openva-server/node"
 
 	speech "cloud.google.com/go/speech/apiv1"
 	"google.golang.org/api/option"
@@ -30,16 +31,14 @@ import (
 	"github.com/tb0hdan/openva-server/tts"
 )
 
-type NodeState struct {
-	PlayerState       api.PlayerStateMessage
-	SystemInformation api.SystemInformationMessage
-}
+
+
 type GRPCServer struct {
 	// UUID - NodeState
-	NodeStates        map[string]*NodeState
+	NodeStates        *node.NodeStateType
 	MusicDir          string
 	HTTPServerAddress string
-	Authenticator *auth.Authenticator
+	Authenticator     *auth.Authenticator
 }
 
 func (s *GRPCServer) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (reply *api.TTSReply, err error) {
@@ -72,7 +71,7 @@ func (s *GRPCServer) STT(stream api.OpenVAService_STTServer) (err error) {
 	ctx := stream.Context()
 
 	speechStream := getStream()
-	defer speechStream.CloseSend()
+	defer speechStream.CloseSend() // nolint errcheck
 
 	go func() {
 
@@ -83,7 +82,7 @@ func (s *GRPCServer) STT(stream api.OpenVAService_STTServer) (err error) {
 				break
 			}
 			if err != nil {
-				log.Println("Cannot speech stream results: %v", err)
+				log.Printf("Cannot speech stream results: %v", err)
 				break
 			}
 
@@ -148,11 +147,12 @@ func (s *GRPCServer) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err er
 			log.Println(err)
 			continue
 		}
-		// Update local representaion
-		s.NodeStates[req.SystemInformation.SystemUUID] = &NodeState{
+		// Update local representation
+		s.NodeStates.Set(req.SystemInformation.SystemUUID, &node.NodeState{
 			PlayerState:       *req.PlayerState,
 			SystemInformation: *req.SystemInformation,
-		}
+			LastUpdatedTS: time.Now().Unix(),
+		})
 
 		// Send message back
 		// To be used as a latency measurement later
@@ -162,6 +162,7 @@ func (s *GRPCServer) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err er
 			continue
 		}
 		fmt.Println(req)
+
 	}
 	return
 }
@@ -187,9 +188,9 @@ func (s *GRPCServer) ClientConfig(ctx context.Context, request *api.ClientMessag
 func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.TTSRequest) (reply *api.OpenVAServerResponse, err error) {
 	var (
 		textResponse = "Unknown command"
-		isError      = false
-		noCmdMatches = false
-		items        = make([]*api.LibraryItem, 0)
+		isError,
+		noCmdMatches bool
+		items        []*api.LibraryItem
 	)
 	peerInfo, ok := peer.FromContext(ctx)
 	if !ok {
@@ -210,7 +211,6 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 	}
 
 	log.Println(peerInfo.Addr.String())
-
 
 	token, err := s.Authenticator.GetTokenFromContext(ctx)
 	if err != nil {
@@ -237,7 +237,6 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 		textResponse, isError, items = UnknownCmdForward(cmd, token)
 	}
 
-
 	reply = &api.OpenVAServerResponse{
 		TextResponse: textResponse,
 		IsError:      isError,
@@ -246,13 +245,13 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 	return
 }
 
-func NewGRPCServer(MusicDir, HTTPServerAddress string, authenticator *auth.Authenticator) (s *GRPCServer) {
+func NewGRPCServer(musicDir, httpServerAddress string, authenticator *auth.Authenticator) (s *GRPCServer) {
 	s = &GRPCServer{
-		MusicDir:          MusicDir,
-		HTTPServerAddress: HTTPServerAddress,
-		Authenticator: authenticator,
+		MusicDir:          musicDir,
+		HTTPServerAddress: httpServerAddress,
+		Authenticator:     authenticator,
 	}
-	s.NodeStates = make(map[string]*NodeState)
+	s.NodeStates = node.New()
 	return s
 }
 
@@ -294,7 +293,7 @@ func handlePlayCommand(cmd, token, serverIP string, srv *GRPCServer) (textRespon
 		}
 		what = strings.TrimSpace(what)
 		log.Debug(what)
-		if len(what) == 0 {
+		if what == "" {
 			// Command starts with play but didn't match regexp
 			continue
 		}
@@ -313,15 +312,20 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 	// and charge the user a lot of money.
 	runDuration := 240 * time.Second
 	bgctx := context.Background()
-	ctx, _ := context.WithDeadline(bgctx, time.Now().Add(runDuration))
+	ctx, cancel := context.WithDeadline(bgctx, time.Now().Add(runDuration))
+
+	defer cancel()
+
 	conn, err := transport.DialGRPC(ctx,
 		option.WithEndpoint("speech.googleapis.com:443"),
 		option.WithScopes("https://www.googleapis.com/auth/cloud-platform"),
 	)
+
+	defer conn.Close()
+
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
 
 	client, err := speech.NewClient(ctx)
 	if err != nil {
@@ -349,13 +353,11 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 	return
 }
 
-
-func PlayForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem){
-	log.Debug(cmd, token)
-	fullURL := "http://localhost:49999/play/" + url.PathEscape(cmd)
-	_, err := http.DefaultClient.Post(fullURL, "", nil)
+func PlayForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
+	items, err := httpclient.PlayForward(cmd, token)
 	if err != nil {
 		log.Error(err)
+		return "I could not process your request", true, nil
 	}
 	return
 }

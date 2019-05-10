@@ -2,8 +2,6 @@ package library
 
 import (
 	"fmt"
-	"github.com/dhowden/tag"
-	"github.com/tb0hdan/openva-server/api"
 	"log"
 	"net/url"
 	"os"
@@ -11,6 +9,9 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/dhowden/tag"
+	"github.com/tb0hdan/openva-server/api"
 )
 
 // https://stackoverflow.com/questions/20401873/remove-invalid-utf-8-characters-from-a-string-go-lang
@@ -22,7 +23,7 @@ func fixUTF(r rune) rune {
 }
 
 type LocalLibrary struct {
-	MusicDir string
+	MusicDir          string
 	HTTPServerAddress string
 }
 
@@ -85,7 +86,7 @@ func (l *LocalLibrary) Library(criteria, token, serverIP string) (libraryItems [
 	return
 }
 
-func libraryFilterPassed(criteria string, args ...string) bool {
+func libraryFilterPassed(criteria string, args ...string) bool { // nolint gocyclo
 	var (
 		artist string
 		//album        string
@@ -93,7 +94,7 @@ func libraryFilterPassed(criteria string, args ...string) bool {
 		searchArtist string
 		searchTrack  string
 	)
-	if len(criteria) == 0 {
+	if criteria == "" {
 		return true
 	}
 
@@ -107,10 +108,9 @@ func libraryFilterPassed(criteria string, args ...string) bool {
 		searchTrack = strings.TrimSpace(strings.Split(criteria, " - ")[1])
 	}
 
-	// artist, album, track
+	// artist, track
 	if len(args) > 3 {
 		artist = strings.TrimSpace(args[0])
-		// album = args[1]
 		track = strings.TrimSpace(args[2])
 	}
 
@@ -126,10 +126,10 @@ func libraryFilterPassed(criteria string, args ...string) bool {
 		if artist == "" || track == "" {
 			continue
 		}
-		if strings.ToLower(searchArtist) != strings.ToLower(artist) {
+		if strings.EqualFold(searchArtist, artist) {
 			continue
 		}
-		if strings.ToLower(searchTrack) == strings.ToLower(track) {
+		if strings.EqualFold(searchTrack, track) {
 			return true
 
 		}
@@ -147,4 +147,3 @@ func pathWords(path string) (newString string) {
 	}
 	return
 }
-

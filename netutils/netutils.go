@@ -1,10 +1,11 @@
 package netutils
 
 import (
-	"github.com/glendc/go-external-ip"
-	"github.com/shirou/gopsutil/net"
 	gnet "net"
 	"strings"
+
+	externalip "github.com/glendc/go-external-ip"
+	"github.com/shirou/gopsutil/net"
 )
 
 func GetExternalIP() (ip gnet.IP, err error) {
@@ -76,7 +77,7 @@ func ServerIPForClientHostPort(hostPort string) (foundIP string) {
 			break
 		}
 	}
-	if len(foundIP) == 0 {
+	if foundIP == "" {
 		extIP, err := GetExternalIP()
 		if err != nil {
 			panic(err)

@@ -62,6 +62,10 @@ func Say(text string) (fileName string) {
 
 	f, err := ioutil.TempFile("", "")
 
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fileName = f.Name()
 
 	// The resp's AudioContent is binary.

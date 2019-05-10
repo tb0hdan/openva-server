@@ -3,21 +3,20 @@ package auth
 import (
 	"bufio"
 	"context"
-	//"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 
-"github.com/pkg/errors"
+	"github.com/pkg/errors"
 
 	"google.golang.org/grpc/metadata"
 )
 
 type Authenticator struct {
 	authFileName string
-	authData map[string]string
+	authData     map[string]string
 }
 
 func (a *Authenticator) ReadAuthData(fileName string) (authMap map[string]string, err error) {
@@ -33,7 +32,7 @@ func (a *Authenticator) ReadAuthData(fileName string) (authMap map[string]string
 	for scanner.Scan() {
 		lines++
 		line := strings.TrimSpace(scanner.Text())
-		if len(line) == 0 {
+		if line == "" {
 			continue
 		}
 		if len(strings.Split(line, ":")) != 2 {
@@ -70,15 +69,15 @@ func (a *Authenticator) VerifyToken(token string) (status bool, errMsg string) {
 func (a *Authenticator) AuthenticationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		values := r.URL.Query()
-		token_values := values["token"]
+		tokenValues := values["token"]
 
-		if len(token_values) == 0 {
+		if len(tokenValues) == 0 {
 			http.Error(w, "403 Forbidden. No token.", http.StatusForbidden)
 			return
 
 		}
 
-		if ok, errMsg := a.VerifyToken(token_values[0]); !ok  {
+		if ok, errMsg := a.VerifyToken(tokenValues[0]); !ok {
 			http.Error(w, fmt.Sprintf("403 Forbidden. %s", errMsg), http.StatusForbidden)
 			return
 		}
