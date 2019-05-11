@@ -31,17 +31,17 @@ import (
 	"github.com/tb0hdan/openva-server/tts"
 )
 
+const ICouldNotProcessYourRequestEN = "I could not process your request"
 
-
-type GRPCServer struct {
-	// UUID - NodeState
-	NodeStates        *node.NodeStateType
+type Server struct {
+	// UUID - State
+	NodeStates        *node.StateType
 	MusicDir          string
 	HTTPServerAddress string
 	Authenticator     *auth.Authenticator
 }
 
-func (s *GRPCServer) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (reply *api.TTSReply, err error) {
+func (s *Server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (reply *api.TTSReply, err error) {
 	cacheDir := path.Join("cache", "tts")
 	err = os.MkdirAll(cacheDir, 0755)
 	if err != nil {
@@ -66,11 +66,14 @@ func (s *GRPCServer) TTSStringToMP3(ctx context.Context, request *api.TTSRequest
 	return
 }
 
-func (s *GRPCServer) STT(stream api.OpenVAService_STTServer) (err error) {
+func (s *Server) STT(stream api.OpenVAService_STTServer) (err error) { // nolint gocyclo
 	fmt.Println("Send config...")
 	ctx := stream.Context()
 
-	speechStream := getStream()
+	speechStream, err := getStream()
+	if err != nil {
+		return err
+	}
 	defer speechStream.CloseSend() // nolint errcheck
 
 	go func() {
@@ -87,7 +90,10 @@ func (s *GRPCServer) STT(stream api.OpenVAService_STTServer) (err error) {
 			}
 
 			replies := stt.GoogleSTTToOpenVASTT(resp)
-			stream.Send(&replies)
+			err = stream.Send(&replies)
+			if err != nil {
+				log.Printf("Stream send error: %+v\n", err)
+			}
 		}
 
 	}()
@@ -122,10 +128,10 @@ func (s *GRPCServer) STT(stream api.OpenVAService_STTServer) (err error) {
 
 	}
 
-	return
+	return nil
 }
 
-func (s *GRPCServer) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err error) {
+func (s *Server) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err error) {
 	log.Println("HeartBeat stream started...")
 	ctx := stream.Context()
 	for {
@@ -148,10 +154,10 @@ func (s *GRPCServer) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err er
 			continue
 		}
 		// Update local representation
-		s.NodeStates.Set(req.SystemInformation.SystemUUID, &node.NodeState{
+		s.NodeStates.Set(req.SystemInformation.SystemUUID, &node.State{
 			PlayerState:       *req.PlayerState,
 			SystemInformation: *req.SystemInformation,
-			LastUpdatedTS: time.Now().Unix(),
+			LastUpdatedTS:     time.Now().Unix(),
 		})
 
 		// Send message back
@@ -164,10 +170,10 @@ func (s *GRPCServer) HeartBeat(stream api.OpenVAService_HeartBeatServer) (err er
 		fmt.Println(req)
 
 	}
-	return
+	return nil
 }
 
-func (s *GRPCServer) ClientConfig(ctx context.Context, request *api.ClientMessage) (reply *api.ClientConfigMessage, err error) {
+func (s *Server) ClientConfig(ctx context.Context, request *api.ClientMessage) (reply *api.ClientConfigMessage, err error) {
 	reply = &api.ClientConfigMessage{
 		Locale: &api.LocaleMessage{
 			LocaleName:                "en-US",
@@ -185,22 +191,22 @@ func (s *GRPCServer) ClientConfig(ctx context.Context, request *api.ClientMessag
 	return
 }
 
-func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.TTSRequest) (reply *api.OpenVAServerResponse, err error) {
+func (s *Server) HandleServerSideCommand(ctx context.Context, request *api.TTSRequest) (reply *api.OpenVAServerResponse, err error) {
 	var (
-		textResponse = "Unknown command"
+		textResponse string
 		isError,
 		noCmdMatches bool
-		items        []*api.LibraryItem
+		items []*api.LibraryItem
 	)
 	peerInfo, ok := peer.FromContext(ctx)
 	if !ok {
 		log.Println("Peer not ok")
-		return nil, errors.New("Go away")
+		return nil, errors.New("go away")
 	}
 
 	if peerInfo.Addr.Network() != "tcp" {
 		log.Println("Peer tried using something else than TCP")
-		return nil, errors.New("Go away. No, really")
+		return nil, errors.New("go away. No, really")
 	}
 
 	serverIP := netutils.ServerIPForClientHostPort(peerInfo.Addr.String())
@@ -237,16 +243,15 @@ func (s *GRPCServer) HandleServerSideCommand(ctx context.Context, request *api.T
 		textResponse, isError, items = UnknownCmdForward(cmd, token)
 	}
 
-	reply = &api.OpenVAServerResponse{
+	return &api.OpenVAServerResponse{
 		TextResponse: textResponse,
 		IsError:      isError,
 		Items:        items,
-	}
-	return
+	}, nil
 }
 
-func NewGRPCServer(musicDir, httpServerAddress string, authenticator *auth.Authenticator) (s *GRPCServer) {
-	s = &GRPCServer{
+func NewGRPCServer(musicDir, httpServerAddress string, authenticator *auth.Authenticator) (s *Server) {
+	s = &Server{
 		MusicDir:          musicDir,
 		HTTPServerAddress: httpServerAddress,
 		Authenticator:     authenticator,
@@ -255,13 +260,13 @@ func NewGRPCServer(musicDir, httpServerAddress string, authenticator *auth.Authe
 	return s
 }
 
-var PlayRegs = map[string]func(cmd, token, serverIP string, srv *GRPCServer) (textResponse string, isError bool, items []*api.LibraryItem){
+var PlayRegs = map[string]func(cmd, token, serverIP string, srv *Server) (textResponse string, isError bool, items []*api.LibraryItem){
 	`^play (.*) from my library$`: handlePlayLibraryCommand,
 	`^play some music by (.*)$`:   handlePlayLibraryCommand,
 	`^play (.*) by (.*)$`:         handlePlayLibraryCommand,
 }
 
-func handlePlayLibraryCommand(what, token, serverIP string, srv *GRPCServer) (textResponse string, isError bool, items []*api.LibraryItem) {
+func handlePlayLibraryCommand(what, token, serverIP string, srv *Server) (textResponse string, isError bool, items []*api.LibraryItem) {
 	var err error
 	textResponse = fmt.Sprintf("Playing %s from your library", what)
 	localLibrary := &library.LocalLibrary{
@@ -278,7 +283,8 @@ func handlePlayLibraryCommand(what, token, serverIP string, srv *GRPCServer) (te
 	return
 }
 
-func handlePlayCommand(cmd, token, serverIP string, srv *GRPCServer) (textResponse string, isError bool, noCmdMatches bool, items []*api.LibraryItem) {
+func handlePlayCommand(cmd, token, serverIP string,
+	srv *Server) (textResponse string, isError, noCmdMatches bool, items []*api.LibraryItem) {
 	matches := 0
 	for reg, fn := range PlayRegs {
 		var what string
@@ -307,7 +313,7 @@ func handlePlayCommand(cmd, token, serverIP string, srv *GRPCServer) (textRespon
 	return
 }
 
-func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
+func getStream() (stream speechpb.Speech_StreamingRecognizeClient, err error) {
 	// connect to Google for a set duration to avoid running forever
 	// and charge the user a lot of money.
 	runDuration := 240 * time.Second
@@ -321,19 +327,22 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 		option.WithScopes("https://www.googleapis.com/auth/cloud-platform"),
 	)
 
-	defer conn.Close()
-
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return nil, err
 	}
+
+	defer conn.Close()
 
 	client, err := speech.NewClient(ctx)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return nil, err
 	}
 	stream, err = client.StreamingRecognize(ctx)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return nil, err
 	}
 	// Send the initial configuration message.
 	if err := stream.Send(&speechpb.StreamingRecognizeRequest{
@@ -348,21 +357,26 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient) {
 			},
 		},
 	}); err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return nil, err
 	}
-	return
+	return stream, nil
 }
 
 func PlayForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
 	items, err := httpclient.PlayForward(cmd, token)
 	if err != nil {
 		log.Error(err)
-		return "I could not process your request", true, nil
+		return ICouldNotProcessYourRequestEN, true, nil
 	}
 	return
 }
 
 func UnknownCmdForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
-	log.Debug(cmd, token)
+	items, err := httpclient.UnknownForward(cmd, token)
+	if err != nil {
+		log.Error(err)
+		return ICouldNotProcessYourRequestEN, true, nil
+	}
 	return
 }

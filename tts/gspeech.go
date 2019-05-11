@@ -33,7 +33,8 @@ func Say(text string) (fileName string) {
 
 	client, err := texttospeech.NewClient(ctx)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return ""
 	}
 
 	// Perform the text-to-speech request on the text input with the selected
@@ -57,13 +58,15 @@ func Say(text string) (fileName string) {
 
 	resp, err := client.SynthesizeSpeech(ctx, &req)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return ""
 	}
 
 	f, err := ioutil.TempFile("", "")
 
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return ""
 	}
 
 	fileName = f.Name()
@@ -71,11 +74,12 @@ func Say(text string) (fileName string) {
 	// The resp's AudioContent is binary.
 	err = ioutil.WriteFile(fileName, resp.AudioContent, 0644)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return ""
 	}
 	fmt.Printf("Audio content written to file: %v\n", fileName)
 
-	return
+	return fileName
 }
 
 // [END tts_quickstart]

@@ -64,5 +64,4 @@ func (mh *MusicHTTPServer) Run() {
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("failed to serve http: %v", err)
 	}
-	return
 }

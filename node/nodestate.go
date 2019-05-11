@@ -6,44 +6,44 @@ import (
 	"github.com/tb0hdan/openva-server/api"
 )
 
-type NodeState struct {
+type State struct {
 	PlayerState       api.PlayerStateMessage
 	SystemInformation api.SystemInformationMessage
 	LastUpdatedTS     int64
 }
 
-type NodeStateType struct {
-	nodeState map[string]*NodeState
+type StateType struct {
+	nodeState map[string]*State
 	m         sync.RWMutex
 }
 
-func (mc *NodeStateType) Get(key string) (value *NodeState, ok bool) {
+func (mc *StateType) Get(key string) (value *State, ok bool) {
 	mc.m.RLock()
 	value, ok = mc.nodeState[key]
 	mc.m.RUnlock()
 	return
 }
 
-func (mc *NodeStateType) Set(key string, value *NodeState) {
+func (mc *StateType) Set(key string, value *State) {
 	mc.m.Lock()
 	mc.nodeState[key] = value
 	mc.m.Unlock()
 }
 
-func (mc *NodeStateType) Len() (stateSize int) {
+func (mc *StateType) Len() (stateSize int) {
 	stateSize = len(mc.nodeState)
 	return
 }
 
-func (mc *NodeStateType) All() map[string]*NodeState {
+func (mc *StateType) All() map[string]*State {
 	return mc.nodeState
 }
 
-func (mc *NodeStateType) Delete(key string) {
+func (mc *StateType) Delete(key string) {
 	delete(mc.nodeState, key)
 }
 
-func New() (nodeState *NodeStateType) {
-	nodeState = &NodeStateType{nodeState: make(map[string]*NodeState)}
+func New() (nodeState *StateType) {
+	nodeState = &StateType{nodeState: make(map[string]*State)}
 	return
 }

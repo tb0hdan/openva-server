@@ -13,3 +13,7 @@ build:
 
 gen:
 	@protoc -I api/ api/service.proto --go_out=plugins=grpc:api
+
+cloc:
+	@cloc --exclude-dir=api .
+

@@ -30,7 +30,8 @@ type LocalLibrary struct {
 func (l *LocalLibrary) Library(criteria, token, serverIP string) (libraryItems []*api.LibraryItem, err error) {
 	dir, err := filepath.EvalSymlinks(l.MusicDir)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%+v\n", err)
+		return nil, err
 	}
 	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -42,7 +43,8 @@ func (l *LocalLibrary) Library(criteria, token, serverIP string) (libraryItems [
 
 		file, err := os.Open(path)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("%+v\n", err)
+			return err
 		}
 
 		artist := ""
@@ -83,7 +85,7 @@ func (l *LocalLibrary) Library(criteria, token, serverIP string) (libraryItems [
 		return nil
 	})
 
-	return
+	return libraryItems, err
 }
 
 func libraryFilterPassed(criteria string, args ...string) bool { // nolint gocyclo

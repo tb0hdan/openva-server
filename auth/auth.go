@@ -49,7 +49,7 @@ func (a *Authenticator) ReadAuthData(fileName string) (authMap map[string]string
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-	return
+	return authMap, nil
 }
 
 func (a *Authenticator) VerifyToken(token string) (status bool, errMsg string) {

@@ -13,7 +13,7 @@ import (
 
 const DeadInterval = 15
 
-type NodeWatcher struct {
+type Watcher struct {
 	LastFMAPIKey    string
 	LastFMAPISecret string
 	LastFMUsername  string
@@ -22,8 +22,8 @@ type NodeWatcher struct {
 	lastFMAPI       *lastfm.Api
 }
 
-func NewNodeWatcher(lastFMAPIKey, lastFMAPISecret, lastFMUsername, lastFMPassword string) *NodeWatcher {
-	return &NodeWatcher{
+func NewNodeWatcher(lastFMAPIKey, lastFMAPISecret, lastFMUsername, lastFMPassword string) *Watcher {
+	return &Watcher{
 		LastFMAPIKey:    lastFMAPIKey,
 		LastFMAPISecret: lastFMAPISecret,
 		LastFMUsername:  lastFMUsername,
@@ -31,13 +31,13 @@ func NewNodeWatcher(lastFMAPIKey, lastFMAPISecret, lastFMUsername, lastFMPasswor
 	}
 }
 
-func NewNodeWatcherWithConnection(lastFMAPIKey, lastFMAPISecret, lastFMUsername, lastFMPassword string) *NodeWatcher {
+func NewNodeWatcherWithConnection(lastFMAPIKey, lastFMAPISecret, lastFMUsername, lastFMPassword string) *Watcher {
 	nodeWatcher := NewNodeWatcher(lastFMAPIKey, lastFMAPISecret, lastFMUsername, lastFMPassword)
 	nodeWatcher.LoginLastFm()
 	return nodeWatcher
 }
 
-func (nw *NodeWatcher) LoginLastFm() {
+func (nw *Watcher) LoginLastFm() {
 	lfmAPI := lastfm.New(nw.LastFMAPIKey, nw.LastFMAPISecret)
 
 	err := lfmAPI.Login(nw.LastFMUsername, nw.LastFMPassword)
@@ -49,7 +49,7 @@ func (nw *NodeWatcher) LoginLastFm() {
 	nw.lastFMAPI = lfmAPI
 }
 
-func (nw *NodeWatcher) Scrobble(nowPlaying string) {
+func (nw *Watcher) Scrobble(nowPlaying string) {
 	var (
 		artist,
 		track string
@@ -77,7 +77,7 @@ func (nw *NodeWatcher) Scrobble(nowPlaying string) {
 
 }
 
-func (nw *NodeWatcher) SetNowPlaying(nowPlaying string) {
+func (nw *Watcher) SetNowPlaying(nowPlaying string) {
 	var (
 		artist,
 		track string
@@ -101,7 +101,7 @@ func (nw *NodeWatcher) SetNowPlaying(nowPlaying string) {
 	}
 }
 
-func (nw *NodeWatcher) ClientWatcher(ctx context.Context, key string, nodeState *NodeStateType) {
+func (nw *Watcher) ClientWatcher(ctx context.Context, key string, nodeState *StateType) { // nolint gocyclo
 	var (
 		passed        int
 		previousTrack string
@@ -156,10 +156,10 @@ func (nw *NodeWatcher) ClientWatcher(ctx context.Context, key string, nodeState 
 	}
 }
 
-func (nw *NodeWatcher) ServerWatcher(nodeStates *NodeStateType) {
+func (nw *Watcher) ServerWatcher(nodeStates *StateType) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	oldmap := make(map[string]*NodeState)
+	oldmap := make(map[string]*State)
 	for {
 		time.Sleep(time.Second)
 		if nodeStates.Len() == 0 {
