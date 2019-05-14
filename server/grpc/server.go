@@ -39,6 +39,7 @@ type Server struct {
 	MusicDir          string
 	HTTPServerAddress string
 	Authenticator     *auth.Authenticator
+	Library           *library.Library
 }
 
 func (s *Server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (reply *api.TTSReply, err error) {
@@ -211,11 +212,6 @@ func (s *Server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 
 	serverIP := netutils.ServerIPForClientHostPort(peerInfo.Addr.String())
 
-	localLibrary := library.LocalLibrary{
-		MusicDir:          s.MusicDir,
-		HTTPServerAddress: s.HTTPServerAddress,
-	}
-
 	log.Println(peerInfo.Addr.String())
 
 	token, err := s.Authenticator.GetTokenFromContext(ctx)
@@ -234,7 +230,7 @@ func (s *Server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 		}
 	case "shuffle":
 		textResponse = "Shuffling your library"
-		items, err = localLibrary.Library("", token, serverIP)
+		items, err = s.Library.Library("", token, serverIP)
 		if err != nil {
 			isError = true
 		}
@@ -255,6 +251,10 @@ func NewGRPCServer(musicDir, httpServerAddress string, authenticator *auth.Authe
 		MusicDir:          musicDir,
 		HTTPServerAddress: httpServerAddress,
 		Authenticator:     authenticator,
+		Library: &library.Library{
+			MusicDir:          musicDir,
+			HTTPServerAddress: httpServerAddress,
+		},
 	}
 	s.NodeStates = node.New()
 	return s
@@ -269,11 +269,8 @@ var PlayRegs = map[string]func(cmd, token, serverIP string, srv *Server) (textRe
 func handlePlayLibraryCommand(what, token, serverIP string, srv *Server) (textResponse string, isError bool, items []*api.LibraryItem) {
 	var err error
 	textResponse = fmt.Sprintf("Playing %s from your library", what)
-	localLibrary := &library.LocalLibrary{
-		MusicDir:          srv.MusicDir,
-		HTTPServerAddress: srv.HTTPServerAddress,
-	}
-	items, err = localLibrary.Library(what, token, serverIP)
+
+	items, err = srv.Library.Library(what, token, serverIP)
 	if err != nil {
 		isError = true
 	}

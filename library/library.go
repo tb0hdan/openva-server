@@ -2,15 +2,19 @@ package library
 
 import (
 	"fmt"
-	"log"
+	"math/rand"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/dhowden/tag"
+	"github.com/dustin/go-humanize"
+	log "github.com/sirupsen/logrus"
 	"github.com/tb0hdan/openva-server/api"
 )
 
@@ -22,12 +26,32 @@ func fixUTF(r rune) rune {
 	return r
 }
 
-type LocalLibrary struct {
-	MusicDir          string
-	HTTPServerAddress string
+type File struct {
+	Artist,
+	Album,
+	Track,
+	EvaluatedDirectory,
+	FilePath string
+	Length int32
 }
 
-func (l *LocalLibrary) Library(criteria, token, serverIP string) (libraryItems []*api.LibraryItem, err error) {
+type Library struct {
+	MusicDir          string
+	HTTPServerAddress string
+	Files             []File
+}
+
+func (l *Library) UpdateIndex() {
+	files, err := l.IndexFiles()
+	if err != nil {
+		log.Error("library index failed")
+		return
+	}
+	l.Files = files
+	log.Println("Size of library in memory: ", humanize.Bytes(uint64(unsafe.Sizeof(l.Files))))
+}
+
+func (l *Library) IndexFiles() (libraryFiles []File, err error) {
 	dir, err := filepath.EvalSymlinks(l.MusicDir)
 	if err != nil {
 		log.Printf("%+v\n", err)
@@ -61,8 +85,28 @@ func (l *LocalLibrary) Library(criteria, token, serverIP string) (libraryItems [
 			track = strings.Map(fixUTF, m.Title())
 		}
 
+		libraryFiles = append(libraryFiles, File{
+			Artist:             artist,
+			Album:              album,
+			Track:              track,
+			Length:             0,
+			FilePath:           path,
+			EvaluatedDirectory: dir,
+		})
+		return nil
+	})
+	return libraryFiles, err
+}
+
+func (l *Library) Library(criteria, token, serverIP string) (libraryItems []*api.LibraryItem, err error) {
+
+	for _, libraryFile := range l.Files {
+
+		artist, album, track, path, dir := libraryFile.Artist,
+			libraryFile.Album, libraryFile.Track, libraryFile.FilePath, libraryFile.EvaluatedDirectory
+
 		if !libraryFilterPassed(criteria, artist, album, track, pathWords(path)) {
-			return nil
+			continue
 		}
 
 		escapedPath := ""
@@ -82,7 +126,11 @@ func (l *LocalLibrary) Library(criteria, token, serverIP string) (libraryItems [
 		}
 		libraryItems = append(libraryItems, item)
 
-		return nil
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(libraryItems), func(i, j int) {
+		libraryItems[i], libraryItems[j] = libraryItems[j], libraryItems[i]
 	})
 
 	return libraryItems, err

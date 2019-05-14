@@ -46,6 +46,8 @@ func Run(musicDir, authFileName, httpPort, grpcPort string) {
 
 	log.Printf("gRPC server started at %s\n", grpcPort)
 
+	openVAServer.Library.UpdateIndex()
+
 	viper.AutomaticEnv()
 
 	nodeWatcher := node.NewNodeWatcherWithConnection(
