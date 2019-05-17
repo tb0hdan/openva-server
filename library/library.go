@@ -48,7 +48,7 @@ func (l *Library) UpdateIndex() {
 		return
 	}
 	l.Files = files
-	log.Println("Size of library in memory: ", humanize.Bytes(uint64(unsafe.Sizeof(l.Files))))
+	log.Println("Size of library in memory: ", humanize.Bytes(uint64(int(unsafe.Sizeof(l.Files))*len(l.Files))))
 }
 
 func (l *Library) IndexFiles() (libraryFiles []File, err error) {
