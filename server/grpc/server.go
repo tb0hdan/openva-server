@@ -68,10 +68,11 @@ func (s *Server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 }
 
 func (s *Server) STT(stream api.OpenVAService_STTServer) (err error) { // nolint gocyclo
-	fmt.Println("Send config...")
+	log.Debug("STT Send config...")
 	ctx := stream.Context()
 
-	speechStream, err := getStream()
+	speechStream, cancelFunc, err := getStream()
+	defer cancelFunc()
 	if err != nil {
 		return err
 	}
@@ -86,14 +87,14 @@ func (s *Server) STT(stream api.OpenVAService_STTServer) (err error) { // nolint
 				break
 			}
 			if err != nil {
-				log.Printf("Cannot speech stream results: %v", err)
+				log.Debugf("STT Cannot speech stream results: %v", err)
 				break
 			}
 
 			replies := stt.GoogleSTTToOpenVASTT(resp)
 			err = stream.Send(&replies)
 			if err != nil {
-				log.Printf("Stream send error: %+v\n", err)
+				log.Debugf("STT Stream send error: %+v\n", err)
 			}
 		}
 
@@ -111,11 +112,11 @@ func (s *Server) STT(stream api.OpenVAService_STTServer) (err error) { // nolint
 
 		req, err := stream.Recv()
 		if err == io.EOF {
-			log.Println("completed")
+			log.Debug("STT completed")
 			break
 		}
 		if err != nil {
-			log.Println(err)
+			log.Debug("STT", err)
 			break
 		}
 
@@ -124,7 +125,7 @@ func (s *Server) STT(stream api.OpenVAService_STTServer) (err error) { // nolint
 				AudioContent: req.STTBuffer,
 			},
 		}); err != nil {
-			log.Printf("Could not send audio: %v", err)
+			log.Debugf("STT Could not send audio: %v", err)
 		}
 
 	}
@@ -310,14 +311,14 @@ func handlePlayCommand(cmd, token, serverIP string,
 	return
 }
 
-func getStream() (stream speechpb.Speech_StreamingRecognizeClient, err error) {
+func getStream() (stream speechpb.Speech_StreamingRecognizeClient, cancelFunc context.CancelFunc, err error) {
+	log.Debug("STT Getstream started....")
 	// connect to Google for a set duration to avoid running forever
 	// and charge the user a lot of money.
+
 	runDuration := 240 * time.Second
 	bgctx := context.Background()
 	ctx, cancel := context.WithDeadline(bgctx, time.Now().Add(runDuration))
-
-	defer cancel()
 
 	conn, err := transport.DialGRPC(ctx,
 		option.WithEndpoint("speech.googleapis.com:443"),
@@ -325,21 +326,21 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient, err error) {
 	)
 
 	if err != nil {
-		log.Printf("%+v\n", err)
-		return nil, err
+		log.Printf("getStream DialGRPC %+v\n", err)
+		return nil, cancel, err
 	}
 
 	defer conn.Close()
 
 	client, err := speech.NewClient(ctx)
 	if err != nil {
-		log.Printf("%+v\n", err)
-		return nil, err
+		log.Printf("getStream SpeachNewclient %+v\n", err)
+		return nil, cancel, err
 	}
 	stream, err = client.StreamingRecognize(ctx)
 	if err != nil {
-		log.Printf("%+v\n", err)
-		return nil, err
+		log.Printf("getStream StreamingRecognize %+v\n", err)
+		return nil, cancel, err
 	}
 	// Send the initial configuration message.
 	if err := stream.Send(&speechpb.StreamingRecognizeRequest{
@@ -354,10 +355,10 @@ func getStream() (stream speechpb.Speech_StreamingRecognizeClient, err error) {
 			},
 		},
 	}); err != nil {
-		log.Printf("%+v\n", err)
-		return nil, err
+		log.Printf("getStream Send %+v\n", err)
+		return nil, cancel, err
 	}
-	return stream, nil
+	return stream, cancel, nil
 }
 
 func PlayForward(cmd, token string) (textResponse string, isError bool, items []*api.LibraryItem) {
