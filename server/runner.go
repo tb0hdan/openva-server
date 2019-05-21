@@ -1,8 +1,12 @@
 package server
 
 import (
-	"log"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
+
+	log "github.com/sirupsen/logrus"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
@@ -16,6 +20,17 @@ import (
 
 	grpc2 "github.com/tb0hdan/openva-server/server/grpc"
 )
+
+// https://gobyexample.com/signals
+func configureServerShutdown(stopFunc func()) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigs
+		log.Debug(sig)
+		stopFunc()
+	}()
+}
 
 func Run(musicDir, authFileName, httpPort, grpcPort string) {
 	httpServer := http.NewMusicHTTPServer(musicDir, authFileName, httpPort)
@@ -42,11 +57,16 @@ func Run(musicDir, authFileName, httpPort, grpcPort string) {
 	)
 
 	openVAServer := grpc2.NewGRPCServer(musicDir, httpPort, authenticator)
+	configureServerShutdown(func() {
+		openVAServer.Stop()
+		server.Stop()
+	})
+
 	api.RegisterOpenVAServiceServer(server, openVAServer)
 
 	log.Printf("gRPC server started at %s\n", grpcPort)
 
-	openVAServer.Library.UpdateIndex()
+	openVAServer.StartPeriodicIndexUpdater()
 
 	viper.AutomaticEnv()
 

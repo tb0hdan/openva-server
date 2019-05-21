@@ -40,6 +40,7 @@ type Server struct {
 	HTTPServerAddress string
 	Authenticator     *auth.Authenticator
 	Library           *library.Library
+	IndexTicker       *time.Ticker
 }
 
 func (s *Server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (reply *api.TTSReply, err error) {
@@ -245,6 +246,26 @@ func (s *Server) HandleServerSideCommand(ctx context.Context, request *api.TTSRe
 		IsError:      isError,
 		Items:        items,
 	}, nil
+}
+
+func (s *Server) StartPeriodicIndexUpdater() {
+	s.IndexTicker = time.NewTicker(60 * time.Second)
+	// Update index immediately
+	go func() {
+		s.Library.UpdateIndex()
+	}()
+	// Update index every minute
+	go func() {
+		for t := range s.IndexTicker.C {
+			s.Library.UpdateIndex()
+			log.Debug("Library update completed at ", t)
+		}
+	}()
+}
+
+func (s *Server) Stop() {
+	s.IndexTicker.Stop()
+	log.Debug("Stop called...")
 }
 
 func NewGRPCServer(musicDir, httpServerAddress string, authenticator *auth.Authenticator) (s *Server) {
