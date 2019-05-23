@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,6 +15,7 @@ import (
 	"github.com/dustin/go-humanize"
 	log "github.com/sirupsen/logrus"
 	"github.com/tb0hdan/openva-server/api"
+	"github.com/tb0hdan/openva-server/stringutil"
 )
 
 // https://stackoverflow.com/questions/20401873/remove-invalid-utf-8-characters-from-a-string-go-lang
@@ -105,7 +105,7 @@ func (l *Library) Library(criteria, token, serverIP string) (libraryItems []*api
 		artist, album, track, path, dir := libraryFile.Artist,
 			libraryFile.Album, libraryFile.Track, libraryFile.FilePath, libraryFile.EvaluatedDirectory
 
-		if !libraryFilterPassed(criteria, artist, album, track, pathWords(path)) {
+		if !libraryFilterPassed(criteria, artist, album, track, stringutil.SplitWords(path)) {
 			continue
 		}
 
@@ -185,15 +185,4 @@ func libraryFilterPassed(criteria string, args ...string) bool { // nolint gocyc
 		}
 	}
 	return false
-}
-
-func pathWords(path string) (newString string) {
-	re := regexp.MustCompile(`[/|_|-|-|(|)|\.]`)
-	for _, str := range strings.Split(re.ReplaceAllString(path, " "), " ") {
-		if strings.TrimSpace(str) == "" {
-			continue
-		}
-		newString += " " + str
-	}
-	return
 }

@@ -17,6 +17,7 @@ import (
 	httpclient "github.com/tb0hdan/openva-server/client/http"
 	"github.com/tb0hdan/openva-server/fileutils"
 	"github.com/tb0hdan/openva-server/node"
+	"github.com/tb0hdan/openva-server/stringutil"
 
 	speech "cloud.google.com/go/speech/apiv1"
 	"google.golang.org/api/option"
@@ -292,13 +293,20 @@ func handlePlayLibraryCommand(what, token, serverIP string, srv *Server) (textRe
 	var err error
 	textResponse = fmt.Sprintf("Playing %s from your library", what)
 
-	items, err = srv.Library.Library(what, token, serverIP)
-	if err != nil {
-		isError = true
+	for _, query := range []string{what, stringutil.SplitWords(what)} {
+		items, err = srv.Library.Library(query, token, serverIP)
+		if err != nil {
+			isError = true
+		}
+		if len(items) > 0 {
+			break
+		}
 	}
+
 	if len(items) == 0 {
 		textResponse = fmt.Sprintf("I could not find %s", what)
 	}
+
 	return
 }
 
