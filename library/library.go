@@ -105,7 +105,8 @@ func (l *Library) Library(criteria, token, serverIP string) (libraryItems []*api
 		artist, album, track, path, dir := libraryFile.Artist,
 			libraryFile.Album, libraryFile.Track, libraryFile.FilePath, libraryFile.EvaluatedDirectory
 
-		if !libraryFilterPassed(criteria, artist, album, track, stringutil.SplitWords(path)) {
+		if !libraryFilterPassed(criteria, artist, album, track, stringutil.SplitWords(path),
+			stringutil.MergeWords(path)) {
 			continue
 		}
 
