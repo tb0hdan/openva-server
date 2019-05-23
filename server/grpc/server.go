@@ -293,7 +293,7 @@ func handlePlayLibraryCommand(what, token, serverIP string, srv *Server) (textRe
 	var err error
 	textResponse = fmt.Sprintf("Playing %s from your library", what)
 
-	for _, query := range []string{what, stringutil.SplitWords(what)} {
+	for _, query := range []string{what, stringutil.SplitWords(what), stringutil.MergeWords(what)} {
 		items, err = srv.Library.Library(query, token, serverIP)
 		if err != nil {
 			isError = true
