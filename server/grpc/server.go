@@ -18,6 +18,8 @@ import (
 	"github.com/tb0hdan/openva-server/fileutils"
 	"github.com/tb0hdan/openva-server/node"
 	"github.com/tb0hdan/openva-server/stringutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	speech "cloud.google.com/go/speech/apiv1"
 	"google.golang.org/api/option"
@@ -57,13 +59,13 @@ func (s *Server) TTSStringToMP3(ctx context.Context, request *api.TTSRequest) (r
 		fname := tts.Say(request.Text)
 		err = fileutils.MoveFile(fname, cachedFile)
 		if err != nil {
-			return nil, err
+			return nil, status.Error(codes.Unavailable, "failed to move TTS file")
 		}
 	}
 
 	result, err := ioutil.ReadFile(cachedFile)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Unavailable, "failed to read TTS file")
 	}
 	reply = &api.TTSReply{MP3Response: result}
 	return
@@ -76,7 +78,7 @@ func (s *Server) STT(stream api.OpenVAService_STTServer) (err error) { // nolint
 	speechStream, cancelFunc, err := getStream()
 	defer cancelFunc()
 	if err != nil {
-		return err
+		return status.Error(codes.Aborted, "could not obtain stream")
 	}
 	defer speechStream.CloseSend() // nolint errcheck
 
